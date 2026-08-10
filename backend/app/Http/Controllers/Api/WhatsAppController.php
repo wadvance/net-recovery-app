@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\WhatsAppMessage;
+use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 
@@ -24,86 +25,11 @@ class WhatsAppController extends Controller
     }
 
     /**
-     * Cliente HTTP de Zavu (unificada: SMS/WhatsApp/etc).
-     * Se usa cuando el proyecto tiene WHATSAPP_TOKEN de Zavu (zv_live_/zv_test_).
-     */
-    protected function zavuClient(): ?\Illuminate\Http\Client\PendingRequest
-    {
-        $key = config('services.zavu.key');
-        if (!$key) {
-            return null;
-        }
-        return Http::withToken($key)
-            ->baseUrl(config('services.zavu.base_url', 'https://api.zavu.dev'))
-            ->timeout(30);
-    }
-
-    protected function zavuHeaders(): array
-    {
-        $headers = ['Content-Type' => 'application/json'];
-        if (config('services.zavu.sender')) {
-            $headers['Zavu-Sender'] = config('services.zavu.sender');
-        }
-        return $headers;
-    }
-
-    /**
      * Proveedor activo: 'zavu' si hay clave Zavu, si no 'meta' (Meta Graph API).
      */
     protected function provider(): string
     {
         return config('services.zavu.key') ? 'zavu' : 'meta';
-    }
-
-    /**
-     * Texto de notificación genérico construido a partir de los datos del cliente.
-     */
-    protected function notificationText(Company $company, Client $client): string
-    {
-        $params = $this->buildTemplateParams($company, $client);
-        return sprintf(
-            "Estimado %s, le informamos sobre su gestión de recuperación de equipos en %s. Pedido: %s. Dirección: %s. Teléfono: %s.",
-            $params['nombre_cliente'],
-            $params['empresa'],
-            $params['numero_pedido'],
-            $params['direccion'],
-            $params['telefono']
-        );
-    }
-
-    /**
-     * Payload de envío a Zavu. Si existe un templateId mapeado para el
-     * template_name (plantilla aprobada por Meta en Zavu), envía plantilla
-     * (messageType=template); si no, envía texto libre dentro de la ventana de
-     * 24h. Las variables posicionales siguen el orden de buildTemplateParams.
-     */
-    protected function zavuPayload(Company $company, Client $client, ?string $templateName): array
-    {
-        $to = '+' . $client->formatted_phone;
-        $templateId = $templateName ? config("services.whatsapp_templates.{$templateName}") : null;
-
-        if ($templateId) {
-            $params = $this->buildTemplateParams($company, $client);
-            $vars = [];
-            foreach (array_values($params) as $i => $v) {
-                $vars[(string) ($i + 1)] = (string) $v;
-            }
-            return [
-                'to' => $to,
-                'messageType' => 'template',
-                'content' => [
-                    'templateId' => $templateId,
-                    'templateVariables' => $vars,
-                ],
-            ];
-        }
-
-        return [
-            'to' => $to,
-            'channel' => 'whatsapp',
-            'messageType' => 'text',
-            'text' => $this->notificationText($company, $client),
-        ];
     }
 
     public function sendBulk(Request $request)
@@ -118,11 +44,10 @@ class WhatsAppController extends Controller
         $company = Company::find($request->company_id);
         $clientsQuery = Client::whereIn('id', $request->client_ids);
         if ($request->user()->role === 'agent') {
-            $clientsQuery->whereHas('tasks', fn($q) => $q->where('assigned_to', $request->user()->id));
+            $clientsQuery->whereHas('tasks', fn ($q) => $q->where('assigned_to', $request->user()->id));
         }
         $clients = $clientsQuery->get();
-        $client = $this->client();                  // Meta Graph API
-        $zavu = $this->zavuClient();                 // Zavu
+        $client = $this->client();
         $isZavu = $this->provider() === 'zavu';
 
         $created = 0;
@@ -140,24 +65,11 @@ class WhatsAppController extends Controller
             $created++;
 
             if ($isZavu) {
-                if (!$zavu) {
-                    $message->markFailed('Zavu API no configurada');
-                    continue;
-                }
-                try {
-                    $payload = $this->zavuPayload($company, $clientRecord, $request->template_name);
-                    $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
-                    $body = $response->json();
-                    if ($response->successful() && isset($body['message']['id'])) {
-                        $message->markSent((string) $body['message']['id'], $body);
-                    } else {
-                        $err = is_array($body)
-                            ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
-                            : $response->body();
-                        $message->markFailed($err);
-                    }
-                } catch (\Throwable $e) {
-                    $message->markFailed($e->getMessage());
+                $result = (new WhatsAppService())->sendToClient($clientRecord, $company, $request->template_name);
+                if ($result['ok']) {
+                    $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
+                } else {
+                    $message->markFailed($result['error']);
                 }
                 continue;
             }
@@ -215,28 +127,12 @@ class WhatsAppController extends Controller
         ]);
 
         if ($this->provider() === 'zavu') {
-            $zavu = $this->zavuClient();
-            if (!$zavu) {
-                $message->markFailed('Zavu API no configurada');
-                return response()->json(['message' => $message->error_message], 503);
+            $result = (new WhatsAppService())->sendToClient($client, $company, $request->template_name);
+            if ($result['ok']) {
+                $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
+            } else {
+                $message->markFailed($result['error']);
             }
-
-                try {
-                    $payload = $this->zavuPayload($company, $client, $request->template_name);
-                    $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
-                $body = $response->json();
-                if ($response->successful() && isset($body['message']['id'])) {
-                    $message->markSent((string) $body['message']['id'], $body);
-                } else {
-                    $err = is_array($body)
-                        ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
-                        : $response->body();
-                    $message->markFailed($err);
-                }
-            } catch (\Throwable $e) {
-                $message->markFailed($e->getMessage());
-            }
-
             return response()->json($message);
         }
 
@@ -275,9 +171,6 @@ class WhatsAppController extends Controller
         $user = $request->user();
         $query = WhatsAppMessage::query()->with(['client', 'task'])->latest();
 
-        // Cada usuario ve la lista que le corresponde: el agente solo sus
-        // clientes/tareas asignadas; admin y supervisor ven todo (con filtro
-        // opcional por empresa).
         if ($user->role === 'agent') {
             $query->where(function ($q) use ($user) {
                 $q->whereHas('task', fn ($tq) => $tq->where('assigned_to', $user->id))
@@ -309,7 +202,7 @@ class WhatsAppController extends Controller
         return [
             [
                 'type' => 'body',
-                'parameters' => array_map(fn($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
+                'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
             ],
         ];
     }

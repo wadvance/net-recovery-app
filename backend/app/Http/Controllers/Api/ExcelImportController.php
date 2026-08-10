@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Services\WhatsAppService;
 
 class ExcelImportController extends Controller
 {
@@ -109,6 +110,7 @@ class ExcelImportController extends Controller
         $failed = 0;
         $errors = [];
         $tasks = [];
+        $notifiable = [];
 
         DB::beginTransaction();
         try {
@@ -232,6 +234,7 @@ class ExcelImportController extends Controller
                     }
 
                     $tasks[] = $task;
+                    $notifiable[] = ['client' => $client, 'companyId' => $companyId];
                     $successful++;
                 } catch (\Exception $e) {
                     $errors[] = "Fila " . ($index + 2) . ": " . $e->getMessage();
@@ -245,12 +248,39 @@ class ExcelImportController extends Controller
             throw $e;
         }
 
+        // Notificar a los clientes importados via WhatsApp (Zavu) una vez
+        // persistidos. Funciona cuando haya un sender de WhatsApp conectado y
+        // la plantilla aprobada; si no, el servicio informa el motivo en errors.
+        $notified = 0;
+        $notifyFailed = 0;
+        $companiesById = [];
+        $whatsapp = new WhatsAppService();
+        foreach ($notifiable as $item) {
+            $companyId = $item['companyId'];
+            if (!isset($companiesById[$companyId])) {
+                $companiesById[$companyId] = Company::find($companyId);
+            }
+            $result = $whatsapp->sendToClient(
+                $item['client'],
+                $companiesById[$companyId],
+                'equipment_recovery_notification'
+            );
+            if ($result['ok']) {
+                $notified++;
+            } else {
+                $notifyFailed++;
+                $errors[] = "Aviso no enviado a {$item['client']->full_name}: {$result['error']}";
+            }
+        }
+
         $import->markCompleted($successful, $failed, $errors);
 
         return response()->json([
             'message' => 'Importación completada',
             'successful' => $successful,
             'failed' => $failed,
+            'notified' => $notified,
+            'notify_failed' => $notifyFailed,
             'errors' => $errors,
         ]);
     }

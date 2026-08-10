@@ -137,8 +137,21 @@ class WhatsAppController extends Controller
 
     public function messages(Request $request)
     {
-        $query = WhatsAppMessage::with(['client'])->latest();
-        if ($request->has('company_id')) $query->where('company_id', $request->company_id);
+        $user = $request->user();
+        $query = WhatsAppMessage::query()->with(['client', 'task'])->latest();
+
+        // Cada usuario ve la lista que le corresponde: el agente solo sus
+        // clientes/tareas asignadas; admin y supervisor ven todo (con filtro
+        // opcional por empresa).
+        if ($user->role === 'agent') {
+            $query->where(function ($q) use ($user) {
+                $q->whereHas('task', fn ($tq) => $tq->where('assigned_to', $user->id))
+                    ->orWhereHas('client', fn ($cq) => $cq->whereHas('tasks', fn ($tq) => $tq->where('assigned_to', $user->id)));
+            });
+        } else {
+            if ($request->has('company_id')) $query->where('company_id', $request->company_id);
+        }
+
         if ($request->has('status')) $query->where('status', $request->status);
 
         return response()->json($query->paginate($request->get('per_page', 15)));

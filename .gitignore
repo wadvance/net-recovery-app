@@ -1,0 +1,46 @@
+# Dependencies
+/backend/vendor
+/backend/node_modules
+/admin-panel/node_modules
+/admin-panel/vendor
+/mobile-app/.dart_tool
+/mobile-app/.pub-cache
+/mobile-app/.packages
+/mobile-app/pub-cache
+
+# Build artifacts
+/dist
+/build
+/.output
+/admin-panel/dist
+/admin-panel/.output
+/mobile-app/build
+/backend/public/build
+/backend/public/hot
+/backend/public/storage
+
+# Environment / secrets
+/.env
+/backend/.env
+/admin-panel/.env
+/backend/.env.*
+!/backend/.env.example
+
+# Testing / IDE
+/.phpunit.result.cache
+/backend/.phpunit.cache
+/backend/.phpunit.result.cache
+/.vscode
+/.idea
+/.cursor
+/.codex
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.log
+/backend/*.log
+
+# Stray test artifacts
+/backend/perf_dl.xlsx
+/CHIRIQUI.xlsx

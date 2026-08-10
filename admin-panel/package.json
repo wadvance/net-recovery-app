@@ -1,0 +1,38 @@
+{
+  "name": "recovery-admin-panel",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix",
+    "format": "prettier --write src/"
+  },
+  "dependencies": {
+    "@vue-leaflet/vue-leaflet": "^0.10.1",
+    "@vueuse/core": "^10.9.0",
+    "axios": "^1.6.8",
+    "chart.js": "^4.4.2",
+    "date-fns": "^3.6.0",
+    "file-saver": "^2.0.5",
+    "leaflet": "^1.9.4",
+    "lodash-es": "^4.17.21",
+    "pinia": "^2.1.7",
+    "vue": "^3.4.21",
+    "vue-chartjs": "^5.3.0",
+    "vue-router": "^4.3.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.4",
+    "autoprefixer": "^10.5.4",
+    "eslint": "^8.57.0",
+    "eslint-plugin-vue": "^9.24.0",
+    "postcss": "^8.4.38",
+    "prettier": "^3.2.5",
+    "tailwindcss": "^3.4.3",
+    "vite": "^5.2.8"
+  }
+}

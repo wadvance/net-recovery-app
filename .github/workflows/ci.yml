@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---- Backend (Laravel API) ----
+  backend:
+    name: Backend (PHP)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring,bcmath,ctype,fileinfo,json,openssl,pdo,pdo_sqlite,tokenizer,xml,zip,gd
+          coverage: none
+          tools: composer:v2
+
+      - name: Cache Composer packages
+        id: composer-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            ~/.composer/cache/files
+          key: composer-${{ runner.os }}-php8.3-${{ hashFiles('backend/composer.json') }}
+          restore-keys: |
+            composer-${{ runner.os }}-php8.3-
+
+      - name: Validate composer.json
+        run: composer validate --no-check-publish --working-dir=backend
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --optimize-autoloader --working-dir=backend
+
+      - name: Prepare environment
+        run: |
+          cp backend/.env.example backend/.env
+          php backend/artisan key:generate --force
+          php backend/artisan config:clear
+
+      - name: Run tests
+        run: backend/vendor/bin/phpunit --configuration backend/phpunit.xml
+
+  # ---- Frontend (Vue admin-panel) ----
+  frontend:
+    name: Frontend (Vue)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: admin-panel/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix admin-panel
+
+      - name: Lint
+        run: npm run lint --prefix admin-panel
+
+      - name: Build
+        run: npm run build --prefix admin-panel

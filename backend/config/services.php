@@ -43,4 +43,10 @@ return [
         'webhook_secret' => env('WHATSAPP_WEBHOOK_SECRET'),
     ],
 
+    'zavu' => [
+        'key' => env('ZAVU_API_KEY'),
+        'base_url' => env('ZAVU_BASE_URL', 'https://api.zavu.dev'),
+        'sender' => env('ZAVU_SENDER'),
+    ],
+
 ];

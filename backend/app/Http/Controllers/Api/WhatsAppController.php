@@ -23,6 +23,54 @@ class WhatsAppController extends Controller
             ->baseUrl("https://graph.facebook.com/{$version}/{$phoneNumberId}");
     }
 
+    /**
+     * Cliente HTTP de Zavu (unificada: SMS/WhatsApp/etc).
+     * Se usa cuando el proyecto tiene WHATSAPP_TOKEN de Zavu (zv_live_/zv_test_).
+     */
+    protected function zavuClient(): ?\Illuminate\Http\Client\PendingRequest
+    {
+        $key = config('services.zavu.key');
+        if (!$key) {
+            return null;
+        }
+        return Http::withToken($key)
+            ->baseUrl(config('services.zavu.base_url', 'https://api.zavu.dev'))
+            ->timeout(30);
+    }
+
+    protected function zavuHeaders(): array
+    {
+        $headers = ['Content-Type' => 'application/json'];
+        if (config('services.zavu.sender')) {
+            $headers['Zavu-Sender'] = config('services.zavu.sender');
+        }
+        return $headers;
+    }
+
+    /**
+     * Proveedor activo: 'zavu' si hay clave Zavu, si no 'meta' (Meta Graph API).
+     */
+    protected function provider(): string
+    {
+        return config('services.zavu.key') ? 'zavu' : 'meta';
+    }
+
+    /**
+     * Texto de notificación genérico construido a partir de los datos del cliente.
+     */
+    protected function notificationText(Company $company, Client $client): string
+    {
+        $params = $this->buildTemplateParams($company, $client);
+        return sprintf(
+            "Estimado %s, le informamos sobre su gestión de recuperación de equipos en %s. Pedido: %s. Dirección: %s. Teléfono: %s.",
+            $params['nombre_cliente'],
+            $params['empresa'],
+            $params['numero_pedido'],
+            $params['direccion'],
+            $params['telefono']
+        );
+    }
+
     public function sendBulk(Request $request)
     {
         $request->validate([
@@ -38,7 +86,9 @@ class WhatsAppController extends Controller
             $clientsQuery->whereHas('tasks', fn($q) => $q->where('assigned_to', $request->user()->id));
         }
         $clients = $clientsQuery->get();
-        $client = $this->client();
+        $client = $this->client();                  // Meta Graph API
+        $zavu = $this->zavuClient();                 // Zavu
+        $isZavu = $this->provider() === 'zavu';
 
         $created = 0;
         foreach ($clients as $clientRecord) {
@@ -53,6 +103,35 @@ class WhatsAppController extends Controller
             ]);
 
             $created++;
+
+            if ($isZavu) {
+                if (!$zavu) {
+                    $message->markFailed('Zavu API no configurada');
+                    continue;
+                }
+                try {
+                    $payload = [
+                        'to' => '+' . $clientRecord->formatted_phone,
+                        'channel' => 'whatsapp',
+                        'text' => $this->notificationText($company, $clientRecord),
+                        'messageType' => 'text',
+                    ];
+                    $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
+                    $body = $response->json();
+                    if ($response->successful() && isset($body['message']['id'])) {
+                        $message->markSent((string) $body['message']['id'], $body);
+                    } else {
+                        $err = is_array($body)
+                            ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
+                            : $response->body();
+                        $message->markFailed($err);
+                    }
+                } catch (\Throwable $e) {
+                    $message->markFailed($e->getMessage());
+                }
+                continue;
+            }
+
             if ($client) {
                 try {
                     $response = $client->post('/messages', [
@@ -104,6 +183,37 @@ class WhatsAppController extends Controller
             'template_name' => $request->template_name,
             'status' => 'pending',
         ]);
+
+        if ($this->provider() === 'zavu') {
+            $zavu = $this->zavuClient();
+            if (!$zavu) {
+                $message->markFailed('Zavu API no configurada');
+                return response()->json(['message' => $message->error_message], 503);
+            }
+
+            try {
+                $payload = [
+                    'to' => '+' . $client->formatted_phone,
+                    'channel' => 'whatsapp',
+                    'text' => $this->notificationText($company, $client),
+                    'messageType' => 'text',
+                ];
+                $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
+                $body = $response->json();
+                if ($response->successful() && isset($body['message']['id'])) {
+                    $message->markSent((string) $body['message']['id'], $body);
+                } else {
+                    $err = is_array($body)
+                        ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
+                        : $response->body();
+                    $message->markFailed($err);
+                }
+            } catch (\Throwable $e) {
+                $message->markFailed($e->getMessage());
+            }
+
+            return response()->json($message);
+        }
 
         $api = $this->client();
         if (!$api) {

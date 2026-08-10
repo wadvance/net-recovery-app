@@ -71,6 +71,41 @@ class WhatsAppController extends Controller
         );
     }
 
+    /**
+     * Payload de envío a Zavu. Si existe un templateId mapeado para el
+     * template_name (plantilla aprobada por Meta en Zavu), envía plantilla
+     * (messageType=template); si no, envía texto libre dentro de la ventana de
+     * 24h. Las variables posicionales siguen el orden de buildTemplateParams.
+     */
+    protected function zavuPayload(Company $company, Client $client, ?string $templateName): array
+    {
+        $to = '+' . $client->formatted_phone;
+        $templateId = $templateName ? config("services.whatsapp_templates.{$templateName}") : null;
+
+        if ($templateId) {
+            $params = $this->buildTemplateParams($company, $client);
+            $vars = [];
+            foreach (array_values($params) as $i => $v) {
+                $vars[(string) ($i + 1)] = (string) $v;
+            }
+            return [
+                'to' => $to,
+                'messageType' => 'template',
+                'content' => [
+                    'templateId' => $templateId,
+                    'templateVariables' => $vars,
+                ],
+            ];
+        }
+
+        return [
+            'to' => $to,
+            'channel' => 'whatsapp',
+            'messageType' => 'text',
+            'text' => $this->notificationText($company, $client),
+        ];
+    }
+
     public function sendBulk(Request $request)
     {
         $request->validate([
@@ -110,12 +145,7 @@ class WhatsAppController extends Controller
                     continue;
                 }
                 try {
-                    $payload = [
-                        'to' => '+' . $clientRecord->formatted_phone,
-                        'channel' => 'whatsapp',
-                        'text' => $this->notificationText($company, $clientRecord),
-                        'messageType' => 'text',
-                    ];
+                    $payload = $this->zavuPayload($company, $clientRecord, $request->template_name);
                     $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
                     $body = $response->json();
                     if ($response->successful() && isset($body['message']['id'])) {
@@ -191,14 +221,9 @@ class WhatsAppController extends Controller
                 return response()->json(['message' => $message->error_message], 503);
             }
 
-            try {
-                $payload = [
-                    'to' => '+' . $client->formatted_phone,
-                    'channel' => 'whatsapp',
-                    'text' => $this->notificationText($company, $client),
-                    'messageType' => 'text',
-                ];
-                $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
+                try {
+                    $payload = $this->zavuPayload($company, $client, $request->template_name);
+                    $response = $zavu->withHeaders($this->zavuHeaders())->post('/v1/messages', $payload);
                 $body = $response->json();
                 if ($response->successful() && isset($body['message']['id'])) {
                     $message->markSent((string) $body['message']['id'], $body);

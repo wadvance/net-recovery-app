@@ -49,4 +49,9 @@ return [
         'sender' => env('ZAVU_SENDER'),
     ],
 
+    // template_name (Meta) -> id de plantilla aprobada en Zavu (tmpl_...)
+    'whatsapp_templates' => [
+        'equipment_recovery_notification' => env('ZAVU_TEMPLATE_ID'),
+    ],
+
 ];

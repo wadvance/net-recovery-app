@@ -11,34 +11,18 @@ FROM php:8.3-fpm-alpine
 
 RUN apk add --no-cache \
     nginx \
-    libpng \
-    libjpeg-turbo \
-    freetype \
-    libzip \
-    oniguruma \
-    libxml2 \
     unzip \
-    git \
     curl \
-    build-base \
-    libpng-dev \
-    libjpeg-turbo-dev \
-    freetype-dev \
-    libzip-dev \
-    oniguruma-dev \
-    libxml2-dev \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-    pdo \
-    pdo_sqlite \
-    mbstring \
-    bcmath \
-    gd \
-    zip \
-    xml \
-    fileinfo \
-    tokenizer \
-    && apk del build-base libpng-dev libjpeg-turbo-dev freetype-dev libzip-dev oniguruma-dev libxml2-dev
+    php83-gd \
+    php83-pdo \
+    php83-pdo_sqlite \
+    php83-mbstring \
+    php83-bcmath \
+    php83-xml \
+    php83-fileinfo \
+    php83-tokenizer \
+    php83-zip \
+    php83-session
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

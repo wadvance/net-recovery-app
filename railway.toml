@@ -1,7 +1,0 @@
-[build]
-  dockerfile = "Dockerfile"
-
-[deploy]
-  startCommand = "/usr/bin/start.sh"
-  healthcheckPath = "/api/v1/health"
-  healthcheckTimeout = 300

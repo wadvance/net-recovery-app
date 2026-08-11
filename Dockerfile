@@ -1,25 +1,23 @@
-# Build frontend
-FROM node:20-alpine AS frontend
-WORKDIR /app/admin-panel
-COPY admin-panel/package*.json ./
-RUN npm ci
-COPY admin-panel/ ./
-RUN npm run build
+FROM php:8.3-fpm-bookworm
 
-# Production - use Trellis image with PHP extensions pre-installed
-FROM ghcr.io/trellis/php:8.3-fpm
+RUN apt-get update \
+    && apt-get install -y nginx unzip curl git \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN apk add --no-cache nginx unzip curl
+RUN docker-php-ext-install pdo pdo_sqlite mbstring bcmath zip xml fileinfo tokenizer
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-RUN rm -f /etc/nginx/http.d/default.conf
-COPY docker/nginx.conf /etc/nginx/http.d/app.conf
+RUN rm -f /etc/nginx/sites-enabled/default
+COPY docker/nginx.conf /etc/nginx/sites-available/app
+RUN ln -s /etc/nginx/sites-available/app /etc/nginx/sites-enabled/app
 
 WORKDIR /var/www/html
 
 COPY backend ./
-COPY --from=frontend /app/admin-panel/public/admin ./public/admin
+COPY admin-panel ./admin-panel
+
+RUN cd admin-panel && npm ci && npm run build && mv public/admin /var/www/html/public/admin && cd .. && rm -rf admin-panel
 
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 

@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => ({
     }
   },
   build: {
-    outDir: '../backend/public/admin',
+    outDir: 'public/admin',
     emptyOutDir: true,
   },
   server: {

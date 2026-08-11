@@ -18,6 +18,9 @@
 /backend/public/build
 /backend/public/hot
 /backend/public/storage
+/backend/public/admin
+/admin-panel/public
+
 
 # Environment / secrets
 /.env

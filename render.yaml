@@ -1,5 +1,3 @@
-docker:
-  # Render reads the Dockerfile at repository root by default
 services:
   - type: web
     name: net-recovery-app
@@ -12,17 +10,43 @@ services:
         value: production
       - key: APP_DEBUG
         value: false
+      - key: APP_KEY
+        value: base64:Gya0/U7CTc8D9jwKA536jyaclCn0xJJXMJuF/8GCjOw=
       - key: APP_URL
-        sync: false
-      - key: FRONTEND_URL
-        sync: false
+        value: https://net-recovery-app.onrender.com
+      - key: APP_LOCALE
+        value: es
+      - key: APP_FALLBACK_LOCALE
+        value: en
       - key: DB_CONNECTION
         value: sqlite
       - key: SESSION_DRIVER
         value: database
+      - key: SESSION_LIFETIME
+        value: 120
       - key: CACHE_STORE
         value: database
       - key: QUEUE_CONNECTION
-        value: database
+        value: sync
       - key: LOG_CHANNEL
         value: stderr
+      - key: LOG_LEVEL
+        value: warning
+      - key: WHATSAPP_VERSION
+        value: v21.0
+      - key: WHATSAPP_BASE_URL
+        value: https://graph.facebook.com
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_WEBHOOK_SECRET
+        sync: false
+      - key: ZAVU_API_KEY
+        value: zv_live_3892d8aec663831de302a709b2841ca184871cb9e22e434a
+      - key: ZAVU_BASE_URL
+        value: https://api.zavu.dev
+      - key: ZAVU_SENDER
+        value: kd7eyphnd8t74e2mf9g2jqw2th8c7khm
+      - key: ZAVU_TEMPLATE_ID
+        value: ks71hmj5vr9b0a68r5vs3k92y18c6smf

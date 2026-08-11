@@ -13,6 +13,10 @@ use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PerformanceController;
 
 Route::prefix('v1')->group(function () {
+    Route::get('/health', function () {
+        return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
+    });
+
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 

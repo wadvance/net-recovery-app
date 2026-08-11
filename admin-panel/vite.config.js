@@ -2,13 +2,17 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [vue()],
-  base: '/',
+  base: '/admin/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
+  },
+  build: {
+    outDir: '../backend/public/admin',
+    emptyOutDir: true,
   },
   server: {
     port: 5173,
@@ -21,4 +25,4 @@ export default defineConfig({
       },
     },
   },
-})
+}))

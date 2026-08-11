@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: net-recovery-app
+    env: php
+    plan: free
+    region: oregon
+    buildCommand: |
+      cd admin-panel && npm ci && npm run build
+      cd ../backend && composer install --no-dev --optimize-autoloader
+      php artisan key:generate --force
+      php artisan storage:link
+      php artisan migrate --force
+      php artisan config:cache
+      php artisan route:cache
+    startCommand: cd backend && php -S 0.0.0.0:$PORT -t public
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: false
+      - key: APP_URL
+        value: https://net-recovery-app.onrender.com
+      - key: FRONTEND_URL
+        value: https://net-recovery-app.onrender.com
+      - key: DB_CONNECTION
+        value: sqlite
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: LOG_CHANNEL
+        value: stderr

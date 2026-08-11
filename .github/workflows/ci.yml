@@ -79,3 +79,14 @@ jobs:
 
       - name: Build
         run: npm run build --prefix admin-panel
+
+  # ---- Docker image (Render deploy) ----
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t net-recovery-app .

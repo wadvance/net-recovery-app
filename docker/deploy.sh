@@ -18,5 +18,10 @@ php artisan storage:link || true
 echo "Starting PHP-FPM..."
 php-fpm -D
 
+echo "Substituting PORT in nginx config..."
+envsubst '${PORT}' < /etc/nginx/sites-enabled/default.conf > /etc/nginx/sites-enabled/default.conf.tmp
+mv /etc/nginx/sites-enabled/default.conf.tmp /etc/nginx/sites-enabled/default.conf
+nginx -t
+
 echo "Starting Nginx..."
 exec nginx -g 'daemon off;'

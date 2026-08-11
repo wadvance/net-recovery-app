@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     curl \
     git \
+    gettext-base \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         pdo pdo_sqlite mbstring bcmath gd zip pcntl fileinfo tokenizer \

@@ -2,16 +2,19 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
+const isFirebase = process.env.FIREBASE === 'true'
+
 export default defineConfig(({ mode }) => ({
   plugins: [vue()],
-  base: '/admin/',
+  base: isFirebase ? '/' : '/admin/',
+  envPrefix: 'VITE_',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
   build: {
-    outDir: 'public/admin',
+    outDir: isFirebase ? 'dist' : 'public/admin',
     emptyOutDir: true,
   },
   server: {

@@ -1,0 +1,36 @@
+name: Deploy Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Build & Deploy admin-panel to Firebase Hosting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: admin-panel/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix admin-panel
+
+      - name: Build admin-panel (Firebase)
+        working-directory: admin-panel
+        run: FIREBASE=true npm run build
+
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_NET_RECOVERY_APP }}
+          channelId: live
+          projectId: net-recovery-app

@@ -9,6 +9,11 @@ php artisan config:cache || true
 echo "Caching routes..."
 php artisan route:cache || true
 
+echo "Preparing database for writable location if needed..."
+if [ "${DB_DATABASE:-}" = "/tmp/database.sqlite" ]; then
+  cp -f /var/www/html/database/database.sqlite /tmp/database.sqlite || true
+fi
+
 echo "Running migrations..."
 php artisan migrate --force || true
 

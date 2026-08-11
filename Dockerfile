@@ -6,23 +6,10 @@ RUN npm ci
 COPY admin-panel/ ./
 RUN npm run build
 
-# Production image
-FROM php:8.3-fpm-alpine
+# Production - use Trellis image with PHP extensions pre-installed
+FROM ghcr.io/trellis/php:8.3-fpm
 
-RUN apk add --no-cache \
-    nginx \
-    unzip \
-    curl \
-    php83-gd \
-    php83-pdo \
-    php83-pdo_sqlite \
-    php83-mbstring \
-    php83-bcmath \
-    php83-xml \
-    php83-fileinfo \
-    php83-tokenizer \
-    php83-zip \
-    php83-session
+RUN apk add --no-cache nginx unzip curl
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 

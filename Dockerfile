@@ -1,35 +1,57 @@
-# Build frontend
-FROM node:20-alpine AS frontend
-WORKDIR /app/admin-panel
+# Stage 1: Build frontend
+FROM node:20-bookworm AS frontend
+WORKDIR /app
 COPY admin-panel/package*.json ./
 RUN npm ci
 COPY admin-panel/ ./
 RUN npm run build
 
-# Production image based on nginx-php-fpm
-FROM richarvey/nginx-php-fpm:1.11.2
+# Stage 2: PHP 8.3 + Nginx
+FROM php:8.3-fpm-bookworm
 
-# Copy nginx config
-COPY docker/nginx.conf /etc/nginx/sites-available/default.conf
+# Install system deps (including build tools for extensions)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx \
+    libzip-dev \
+    libpng-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libonig-dev \
+    libxml2-dev \
+    unzip \
+    curl \
+    git \
+    && docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+        pdo pdo_sqlite mbstring bcmath gd zip pcntl fileinfo tokenizer \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy deploy script
-COPY docker/deploy.sh /var/www/html/deploy.sh
-RUN chmod +x /var/www/html/deploy.sh
+# Composer
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# Copy backend
-COPY backend /var/www/html
+# Nginx config
+COPY docker/nginx.conf /etc/nginx/sites-enabled/default.conf
+RUN rm -f /etc/nginx/sites-enabled/default
 
-# Copy frontend build
-COPY --from=frontend /app/admin-panel/public/admin /var/www/html/public/admin
+# Deploy script
+COPY docker/deploy.sh /usr/local/bin/deploy.sh
+RUN chmod +x /usr/local/bin/deploy.sh
 
-# Set permissions
+WORKDIR /var/www/html
+
+# Backend code
+COPY backend ./
+
+# Frontend build
+COPY --from=frontend /app/public/admin ./public/admin
+
+# Install PHP deps
+RUN composer install --no-dev --optimize-autoloader --no-interaction
+
+# Permissions
 RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html/storage /var/www/html/bootstrap/cache
-
-ENV WEBROOT /var/www/html/public
-ENV PHP_ENV production
-ENV PHP_OPCACHE_REVALIDATE_FREQ 0
+    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 EXPOSE 8080
-
-CMD ["/bin/bash", "/var/www/html/deploy.sh"]
+CMD ["/usr/local/bin/deploy.sh"]

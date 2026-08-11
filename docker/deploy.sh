@@ -3,24 +3,20 @@ set -e
 
 cd /var/www/html
 
-echo "Running composer..."
-composer install --no-dev --optimize-autoloader --no-interaction
-
 echo "Caching config..."
-php artisan config:cache
+php artisan config:cache || true
 
 echo "Caching routes..."
-php artisan route:cache
+php artisan route:cache || true
 
 echo "Running migrations..."
-php artisan migrate --force
+php artisan migrate --force || true
 
 echo "Creating storage link..."
-php artisan storage:link
+php artisan storage:link || true
 
-echo "Starting services..."
-# Start PHP-FPM
+echo "Starting PHP-FPM..."
 php-fpm -D
 
-# Start nginx
-nginx -g 'daemon off;'
+echo "Starting Nginx..."
+exec nginx -g 'daemon off;'

@@ -1,10 +1,11 @@
+docker:
+  # Render reads the Dockerfile at repository root by default
 services:
   - type: web
     name: net-recovery-app
     env: docker
     plan: free
     region: oregon
-    dockerfilePath: ./DockerDir
     healthCheckPath: /api/v1/health
     envVars:
       - key: APP_ENV

@@ -1,18 +1,10 @@
 services:
   - type: web
     name: net-recovery-app
-    env: php
+    env: docker
     plan: free
     region: oregon
-    buildCommand: |
-      cd admin-panel && npm ci && npm run build
-      cd ../backend && composer install --no-dev --optimize-autoloader
-      php artisan key:generate --force
-      php artisan storage:link
-      php artisan migrate --force
-      php artisan config:cache
-      php artisan route:cache
-    startCommand: cd backend && php -S 0.0.0.0:$PORT -t public
+    dockerfilePath: ./DockerDir
     healthCheckPath: /api/v1/health
     envVars:
       - key: APP_ENV

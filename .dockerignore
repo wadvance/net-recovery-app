@@ -1,0 +1,15 @@
+node_modules
+.git
+.env
+vendor
+storage/*.key
+bootstrap/cache/*
+!bootstrap/cache/.gitkeep
+database/database.sqlite
+database/database.sqlite-journal
+*.log
+.npm
+.eslintcache
+backend/vendor
+backend/node_modules
+admin-panel/node_modules

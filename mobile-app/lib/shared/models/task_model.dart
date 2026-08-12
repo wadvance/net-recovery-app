@@ -231,7 +231,7 @@ class TaskEvidenceModel {
   factory TaskEvidenceModel.fromJson(Map<String, dynamic> json) => _$TaskEvidenceModelFromJson(json);
   Map<String, dynamic> toJson() => _$TaskEvidenceModelToJson(this);
 
-  String get fullUrl => 'http://10.0.2.2:8000/storage/$filePath';
+  String get fullUrl => 'https://netrecovery.unaux.com/storage/$filePath';
 }
 
 @JsonSerializable()

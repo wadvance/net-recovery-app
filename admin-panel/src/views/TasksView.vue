@@ -37,17 +37,26 @@
             v-model="agentFilterName"
             class="input max-w-xs"
             @change="onAgentInput"
+            :disabled="isAgent"
           >
-            <option value="">
-              Todos los agentes
-            </option>
             <option
-              v-for="a in agents"
-              :key="a.id"
-              :value="a.name"
+              v-if="isAgent"
+              :value="authStore.user?.name || ''"
             >
-              {{ a.name }}
+              {{ authStore.user?.name }}
             </option>
+            <template v-else>
+              <option value="">
+                Todos los agentes
+              </option>
+              <option
+                v-for="a in agents"
+                :key="a.id"
+                :value="a.name"
+              >
+                {{ a.name }}
+              </option>
+            </template>
           </select>
         </div>
         <div>
@@ -747,6 +756,15 @@ onMounted(async () => {
   await fetchCompanies()
   await fetchAgents()
   await fetchPool()
+  if (isAgent.value) {
+    agentFilterName.value = authStore.user?.name || ''
+    agentFilterId.value = authStore.user?.id || ''
+    await fetchTasks()
+    const today = new Date().toISOString().split('T')[0]
+    if (availableDates.value.includes(today)) selectedDate.value = today
+    else if (availableDates.value.length) selectedDate.value = availableDates.value[availableDates.value.length - 1]
+    expandDateGroups(selectedDate.value)
+  }
 })
 
 async function fetchAgents() {

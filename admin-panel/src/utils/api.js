@@ -61,7 +61,7 @@ export const usersApi = {
   update: (id, data) => api.put(`/users/${id}`, data),
   delete: (id) => api.delete(`/users/${id}`),
   toggleStatus: (id) => api.put(`/users/${id}/toggle-status`),
-  resetPassword: (id) => api.put(`/users/${id}/reset-password`),
+  resetPassword: (id, password) => api.put(`/users/${id}/reset-password`, { password }),
   agentsList: () => api.get('/users/agents'),
 }
 

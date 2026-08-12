@@ -105,6 +105,12 @@
               >
                 Editar
               </button>
+              <button
+                class="text-sm text-orange-500 hover:text-orange-600 ml-3"
+                @click="openResetModal(user)"
+              >
+                Restablecer contraseña
+              </button>
             </td>
           </tr>
         </tbody>
@@ -186,6 +192,54 @@
         </form>
       </div>
     </div>
+
+    <!-- Reset password modal -->
+    <div
+      v-if="showResetModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    >
+      <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md">
+        <h3 class="text-lg font-semibold mb-4 dark:text-white">
+          Restablecer contraseña
+        </h3>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Nueva contraseña para <strong class="text-gray-700 dark:text-gray-200">{{ resetUser?.name }}</strong> ({{ resetUser?.email }})
+        </p>
+        <form
+          class="space-y-4"
+          @submit.prevent="resetPassword"
+        >
+          <div>
+            <label class="label">Nueva contraseña</label>
+            <input
+              v-model="resetPasswordForm"
+              type="text"
+              class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all"
+              minlength="8"
+              required
+            >
+            <p class="text-xs text-gray-400 mt-1">
+              Mínimo 8 caracteres. Compártela con el usuario.
+            </p>
+          </div>
+          <div class="flex gap-3 pt-2">
+            <button
+              type="button"
+              class="btn btn-secondary flex-1"
+              @click="showResetModal = false"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primary flex-1"
+            >
+              Restablecer
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -199,6 +253,9 @@ const roleFilter = ref('')
 const showModal = ref(false)
 const editing = ref(null)
 const form = ref({ name: '', email: '', phone: '', role: 'agent', password: '' })
+const showResetModal = ref(false)
+const resetUser = ref(null)
+const resetPasswordForm = ref('')
 
 onMounted(fetchUsers)
 
@@ -227,6 +284,22 @@ async function save() {
 async function toggleStatus(user) {
   await usersApi.toggleStatus(user.id)
   fetchUsers()
+}
+
+function openResetModal(user) {
+  resetUser.value = user
+  resetPasswordForm.value = ''
+  showResetModal.value = true
+}
+
+async function resetPassword() {
+  try {
+    await usersApi.resetPassword(resetUser.value.id, resetPasswordForm.value)
+    showResetModal.value = false
+    alert(`Contraseña de ${resetUser.value.name} restablecida correctamente.`)
+  } catch (e) {
+    alert(e.response?.data?.message || 'Error al restablecer la contraseña')
+  }
 }
 
 function roleClass(role) {

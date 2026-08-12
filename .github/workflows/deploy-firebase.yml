@@ -26,6 +26,8 @@ jobs:
 
       - name: Build admin-panel (Firebase)
         working-directory: admin-panel
+        env:
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
         run: FIREBASE=true npm run build
 
       - uses: FirebaseExtended/action-hosting-deploy@v0

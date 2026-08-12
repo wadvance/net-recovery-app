@@ -105,12 +105,6 @@
               >
                 Editar
               </button>
-              <button
-                class="text-sm text-red-500 hover:text-red-600 ml-3"
-                @click="removeUser(user)"
-              >
-                Eliminar
-              </button>
             </td>
           </tr>
         </tbody>
@@ -233,16 +227,6 @@ async function save() {
 async function toggleStatus(user) {
   await usersApi.toggleStatus(user.id)
   fetchUsers()
-}
-
-async function removeUser(user) {
-  if (!confirm(`¿Eliminar al usuario "${user.name}"? Esta acción no se puede deshacer.`)) return
-  try {
-    await usersApi.delete(user.id)
-    fetchUsers()
-  } catch (e) {
-    alert(e.response?.data?.message || 'Error al eliminar el usuario')
-  }
 }
 
 function roleClass(role) {

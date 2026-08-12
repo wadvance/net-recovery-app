@@ -1,5 +1,4 @@
 <?php
-// Temporal: reemplaza htdocs/admin/ y extrae admin.zip ahi
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 ini_set('max_execution_time', 120);
@@ -8,7 +7,6 @@ $root = __DIR__;
 $target = $root . '/admin';
 $zipFile = $root . '/admin.zip';
 
-// Borrar admin/ anterior
 if (is_dir($target)) {
     $it = new RecursiveIteratorIterator(
         new RecursiveDirectoryIterator($target, FilesystemIterator::SKIP_DOTS),

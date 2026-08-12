@@ -17,26 +17,31 @@ const routes = [
         path: '',
         name: 'Dashboard',
         component: () => import('@/views/DashboardView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'companies',
         name: 'Companies',
         component: () => import('@/views/CompaniesView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'users',
         name: 'Users',
         component: () => import('@/views/UsersView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'clients',
         name: 'Clients',
         component: () => import('@/views/ClientsView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'clients/:id',
         name: 'ClientDetail',
         component: () => import('@/views/ClientDetailView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'tasks',
@@ -52,6 +57,7 @@ const routes = [
         path: 'import',
         name: 'ExcelImport',
         component: () => import('@/views/ExcelImportView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'whatsapp',
@@ -62,6 +68,7 @@ const routes = [
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/ReportsView.vue'),
+        meta: { agentRestricted: true },
       },
       {
         path: 'performance',
@@ -89,6 +96,8 @@ router.beforeEach((to, from, next) => {
     next('/login')
   } else if (to.meta.guest && authStore.isAuthenticated) {
     next('/')
+  } else if (to.meta.agentRestricted && authStore.user?.role === 'agent') {
+    next('/tasks')
   } else {
     next()
   }

@@ -229,6 +229,10 @@ const navigation = computed(() => {
     { path: '/map', label: 'Mapa', icon: MapIcon },
   ]
 
+  if (authStore.user?.role === 'agent') {
+    return items.filter(i => ['/tasks', '/whatsapp', '/performance', '/map'].includes(i.path))
+  }
+
   if (!authStore.isSupervisor) {
     return items.filter(i => !['/companies', '/users'].includes(i.path))
   }

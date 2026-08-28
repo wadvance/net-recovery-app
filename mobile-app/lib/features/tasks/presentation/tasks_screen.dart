@@ -5,16 +5,36 @@ import 'package:go_router/go_router.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/models/task_model.dart';
+import '../../scans/presentation/equipment_scan_screen.dart';
 import '../data/task_repository.dart';
+import '../../../features/auth/data/auth_repository.dart';
 
 final tasksProvider = FutureProvider.autoDispose<List<TaskModel>>((ref) async {
   final repository = ref.watch(taskRepositoryProvider);
-  return repository.getMyTasks();
+  final authState = ref.watch(authStateProvider);
+  final tasks = await repository.getMyTasks();
+  if (authState.user != null) {
+    return tasks.where((task) {
+      return task.assignedTo == authState.user!.id || 
+             (task.assignee?.id == authState.user!.id) || 
+             (task.assignee?.name == authState.user!.name);
+    }).toList();
+  }
+  return tasks;
 });
 
 final tasksByDateProvider = FutureProvider.family.autoDispose<List<TaskModel>, String>((ref, date) async {
   final repository = ref.watch(taskRepositoryProvider);
-  return repository.getMyTasksByDate(date);
+  final authState = ref.watch(authStateProvider);
+  final tasks = await repository.getMyTasksByDate(date);
+  if (authState.user != null) {
+    return tasks.where((task) {
+      return task.assignedTo == authState.user!.id || 
+             (task.assignee?.id == authState.user!.id) || 
+             (task.assignee?.name == authState.user!.name);
+    }).toList();
+  }
+  return tasks;
 });
 
 class TasksScreen extends ConsumerStatefulWidget {
@@ -111,6 +131,19 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             ),
           ),
         ],
+      ),
+      // Escáner global: disponible para todos los agentes desde la
+      // pantalla principal, sin necesidad de entrar a una tarea.
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const EquipmentScanScreen()),
+          );
+        },
+        icon: const Icon(Icons.qr_code_scanner),
+        label: const Text('Escanear'),
+        backgroundColor: AppColors.completed,
+        foregroundColor: AppColors.white,
       ),
     );
   }

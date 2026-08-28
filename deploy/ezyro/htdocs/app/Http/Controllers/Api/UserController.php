@@ -33,6 +33,8 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede crear usuarios');
+
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
@@ -66,6 +68,7 @@ class UserController extends Controller
 
         $data = $request->only(['name', 'email', 'phone', 'role', 'is_active']);
         if ($request->filled('password')) {
+            abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede cambiar contraseñas');
             $data['password'] = Hash::make($request->password);
         }
 
@@ -91,6 +94,8 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede restablecer contraseñas');
+
         $request->validate(['password' => 'required|string|min:8']);
         $user->update(['password' => Hash::make($request->password)]);
         return response()->json(['message' => 'Contraseña actualizada']);

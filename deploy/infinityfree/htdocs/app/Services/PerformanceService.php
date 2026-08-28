@@ -215,12 +215,16 @@ class PerformanceService
         $sheet->getStyle('A' . $last)->getFont()->setBold(true);
 
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-        $tmp = tempnam(sys_get_temp_dir(), 'perf_') . '.xlsx';
+        $tmpDir = storage_path('app/private/tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+        $tmp = $tmpDir . '/perf_' . uniqid('', true) . '.xlsx';
         $writer->save($tmp);
 
         $path = "reports/performance_{$startDate}_{$userId}_{$endDate}.xlsx";
         \Illuminate\Support\Facades\Storage::disk('local')->put($path, file_get_contents($tmp));
-        unlink($tmp);
+        @unlink($tmp);
 
         return $path;
     }

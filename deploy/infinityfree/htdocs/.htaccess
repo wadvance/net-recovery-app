@@ -1,4 +1,4 @@
-﻿<IfModule mod_rewrite.c>
+<IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews
     </IfModule>
@@ -16,9 +16,23 @@
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
-    RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
+</IfModule>
+
+# MIME types para el PWA (manifest y service worker)
+AddType application/manifest+json .webmanifest
+AddType application/json .json
+AddType text/javascript .js
+
+# Nunca cachear HTML para que siempre se vea la última versión
+<IfModule mod_headers.c>
+    <FilesMatch "\.(html|webmanifest)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+        Header set Pragma "no-cache"
+        Header set Expires "0"
+    </FilesMatch>
 </IfModule>
 
 # Protect sensitive files
@@ -27,3 +41,12 @@
 </FilesMatch>
 
 Options -Indexes
+
+# OPCACHE_FORCE_RELOAD_2026-08-12T02:05:30.7444037-05:00
+
+
+# CDN_BUSTER_2026-08-12T02:26:29.7333031-05:00
+
+
+# CDN_BUSTER_2026-08-12T02:35:49.7218645-05:00
+

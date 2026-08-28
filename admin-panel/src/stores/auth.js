@@ -3,10 +3,29 @@ import { ref, computed } from 'vue'
 import { authApi } from '@/utils/api'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref(JSON.parse(localStorage.getItem('user') || 'null'))
+  let storedUser = null
+  try {
+    const raw = localStorage.getItem('user')
+    if (raw && raw !== 'undefined') {
+      storedUser = JSON.parse(raw)
+    } else {
+      localStorage.removeItem('user')
+    }
+  } catch (_) {
+    localStorage.removeItem('user')
+    storedUser = null
+  }
+
+  const user = ref(storedUser)
   const token = ref(localStorage.getItem('token') || '')
   const loading = ref(false)
   const error = ref(null)
+
+  let deviceId = localStorage.getItem('device_id')
+  if (!deviceId) {
+    deviceId = `device-${(crypto.randomUUID?.() || `d${Date.now()}${Math.random().toString(16).slice(2)}`)}`
+    localStorage.setItem('device_id', deviceId)
+  }
 
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
@@ -16,7 +35,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     error.value = null
     try {
-      const response = await authApi.login(credentials)
+      const response = await authApi.login({ ...credentials, device_name: deviceId })
       const { user: userData, token: tokenValue } = response.data
 
       user.value = userData

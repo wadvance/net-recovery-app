@@ -41,17 +41,27 @@ return [
         'version' => env('WHATSAPP_VERSION', 'v21.0'),
         'base_url' => env('WHATSAPP_BASE_URL', 'https://graph.facebook.com'),
         'webhook_secret' => env('WHATSAPP_WEBHOOK_SECRET'),
+        // Meta directo (Opción C)
+        'app_secret' => env('META_APP_SECRET'),
+        'webhook_verify_token' => env('META_WEBHOOK_VERIFY_TOKEN', 'netrecovery2026'),
+        // Resumen diario de tareas por agente (true/false)
+        'agent_summary' => env('WHATSAPP_AGENT_SUMMARY', true),
     ],
 
-    'zavu' => [
-        'key' => env('ZAVU_API_KEY'),
-        'base_url' => env('ZAVU_BASE_URL', 'https://api.zavu.dev'),
-        'sender' => env('ZAVU_SENDER'),
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_WHATSAPP_FROM'),
     ],
 
-    // template_name (Meta) -> id de plantilla aprobada en Zavu (tmpl_...)
+    // template_name -> Content Sid aprobado en Twilio (HX...)
+    'twilio_content_templates' => [
+        'equipment_recovery_notification' => env('TWILIO_WHATSAPP_CONTENT_SID'),
+    ],
+
+    // template_name (Meta) -> nombre de plantilla aprobada en Meta Business Manager
     'whatsapp_templates' => [
-        'equipment_recovery_notification' => env('ZAVU_TEMPLATE_ID'),
+        'equipment_recovery_notification' => env('WHATSAPP_TEMPLATE_NAME', 'equipment_recovery_notification'),
     ],
 
 ];

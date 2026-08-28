@@ -1,6 +1,6 @@
 <template>
-  <div class="p-8">
-    <div class="flex items-center justify-between mb-8">
+  <div class="p-4 lg:p-8">
+    <div class="flex items-center justify-between mb-8 flex-wrap gap-2">
       <div>
         <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
           WhatsApp
@@ -9,6 +9,13 @@
           Envío masivo a los clientes de las tareas del día
         </p>
       </div>
+      <button
+        type="button"
+        class="px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-600 text-red-600 dark:text-red-400 text-xs font-medium hover:bg-red-50 dark:hover:bg-red-900/20"
+        @click="clearFileList"
+      >
+        🗑️ Limpiar lista de archivos
+      </button>
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -22,15 +29,32 @@
           @submit.prevent="sendBulk"
         >
           <div class="flex gap-3 flex-wrap">
-            <div v-if="!isAgent">
+            <div>
+              <label class="label">Cliente</label>
+              <input
+                v-model="clientSearch"
+                type="text"
+                class="input"
+                placeholder="Buscar por nombre..."
+              >
+            </div>
+            <div>
+              <label class="label">Teléfono</label>
+              <input
+                v-model="phoneSearch"
+                type="text"
+                class="input"
+                placeholder="Buscar por teléfono..."
+              >
+            </div>
+            <div>
               <label class="label">Empresa</label>
               <select
                 v-model="form.company_id"
                 class="input"
-                required
               >
                 <option value="">
-                  Seleccionar
+                  Todos
                 </option>
                 <option
                   v-for="c in companies"
@@ -40,14 +64,6 @@
                   {{ c.name }}
                 </option>
               </select>
-            </div>
-            <div v-else>
-              <label class="label">Empresa</label>
-              <input
-                :value="companies.find(c => String(c.id) === String(form.company_id))?.name || companies[0]?.name"
-                class="input"
-                disabled
-              >
             </div>
             <div>
               <label class="label">Fecha</label>
@@ -102,6 +118,9 @@
                 <thead class="bg-gray-50 dark:bg-gray-800 sticky top-0">
                   <tr class="text-left text-gray-500 dark:text-gray-400">
                     <th class="px-3 py-2 font-medium">
+                      EMPRESA
+                    </th>
+                    <th class="px-3 py-2 font-medium">
                       NOMBRE
                     </th>
                     <th class="px-3 py-2 font-medium">
@@ -136,6 +155,14 @@
                     :key="c.id"
                     class="hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
+                    <td class="px-3 py-2 whitespace-nowrap">
+                      <span
+                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold"
+                        :style="{ backgroundColor: companyColor(c) + '22', color: companyColor(c) }"
+                      >
+                        {{ companyName(c) }}
+                      </span>
+                    </td>
                     <td class="px-3 py-2 font-medium text-gray-700 dark:text-gray-100 whitespace-nowrap">
                       {{ c.full_name }}
                     </td>
@@ -149,7 +176,7 @@
                       +{{ c.phone }}
                     </td>
                     <td class="px-3 py-2 text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                      +{{ c.alternate_phone || '-' }}
+                      {{ c.alternate_phone ? '+' + c.alternate_phone : '-' }}
                     </td>
                     <td class="px-3 py-2 text-gray-600 dark:text-gray-300">
                       {{ c.metadata?.provincia || '-' }}
@@ -194,10 +221,41 @@
         <div class="bg-green-50 dark:bg-green-900/30 rounded-xl p-4">
           <div class="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm max-w-xs">
             <p class="text-sm text-gray-800 dark:text-gray-100 leading-relaxed">
-              Estimado/a <strong>[Nombre]</strong>, le informamos que el Departamento de Recuperación de Equipos de <strong>[Empresa]</strong> se comunicó con usted respecto al pedido #<strong>[Pedido]</strong>. Un agente se acercará a la dirección registrada para retirar los equipos. Por favor manténgase atento/a a su teléfono. Gracias.
+              Estimado(a) cliente: Le informamos que el Departamento de Recuperación de Equipos de <strong>{{ previewCompany }}</strong> se comunicara con usted respecto al pedido #<strong>{{ previewOrder }}</strong>. Nos puede proporcionar por este medio su ubicación en tiempo actual por WhatsApp para retirar los equipos. Un agente se acercará a la dirección registrada. Por favor manténgase atento/a a su teléfono. Gracias.
             </p>
             <p class="text-xs text-gray-400 text-right mt-2">
               WhatsApp
+            </p>
+          </div>
+          <div class="mt-4">
+            <p class="text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
+              Destinatarios ({{ selectedClients.length }})
+            </p>
+            <ul
+              v-if="selectedClients.length"
+              class="space-y-1.5 max-h-56 overflow-auto"
+            >
+              <li
+                v-for="c in selectedClients"
+                :key="c.id"
+                class="flex items-center justify-between gap-2 text-xs"
+              >
+                <span class="text-gray-800 dark:text-gray-100 truncate">
+                  {{ c.full_name || '-' }}
+                </span>
+                <span class="text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono">
+                  #{{ c.metadata?.suscriptor || c.order_number || '-' }}
+                </span>
+                <span class="text-gray-500 dark:text-gray-400 whitespace-nowrap font-mono">
+                  +{{ c.phone || '-' }}
+                </span>
+              </li>
+            </ul>
+            <p
+              v-else
+              class="text-xs text-gray-400"
+            >
+              Selecciona al menos un cliente
             </p>
           </div>
         </div>
@@ -209,62 +267,64 @@
       <h3 class="font-semibold mb-4 text-gray-800 dark:text-white">
         Historial de mensajes
       </h3>
-      <table class="w-full">
-        <thead>
-          <tr class="text-left text-xs text-gray-500 dark:text-gray-300 border-b dark:border-gray-700">
-            <th class="pb-3 font-medium">
-              Teléfono
-            </th>
-            <th class="pb-3 font-medium">
-              Cliente
-            </th>
-            <th class="pb-3 font-medium">
-              Template
-            </th>
-            <th class="pb-3 font-medium">
-              Estado
-            </th>
-            <th class="pb-3 font-medium">
-              Fecha
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr
-            v-for="msg in messages"
-            :key="msg.id"
-            class="border-b border-gray-50 last:border-0 dark:border-gray-700"
-          >
-            <td class="py-3 text-sm font-mono text-gray-800 dark:text-gray-100">
-              {{ msg.to_phone }}
-            </td>
-            <td class="py-3 text-sm text-gray-700 dark:text-gray-200">
-              {{ msg.client?.full_name || '-' }}
-            </td>
-            <td class="py-3 text-sm text-gray-600 dark:text-gray-300">
-              {{ msg.template_name }}
-            </td>
-            <td class="py-3">
-              <span
-                :class="msg.status === 'sent' || msg.status === 'delivered' ? 'badge-completed' : msg.status === 'failed' ? 'badge-failed' : 'badge-pending'"
-                class="badge"
-              >
-                {{ msg.status }}
-              </span>
-            </td>
-            <td class="py-3 text-sm text-gray-500 dark:text-gray-400">
-              {{ msg.created_at }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-left text-xs text-gray-500 dark:text-gray-300 border-b dark:border-gray-700">
+              <th class="pb-3 font-medium">
+                Teléfono
+              </th>
+              <th class="pb-3 font-medium">
+                Cliente
+              </th>
+              <th class="pb-3 font-medium">
+                Template
+              </th>
+              <th class="pb-3 font-medium">
+                Estado
+              </th>
+              <th class="pb-3 font-medium">
+                Fecha
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="msg in messages"
+              :key="msg.id"
+              class="border-b border-gray-50 last:border-0 dark:border-gray-700"
+            >
+              <td class="py-3 text-sm font-mono text-gray-800 dark:text-gray-100">
+                {{ msg.to_phone }}
+              </td>
+              <td class="py-3 text-sm text-gray-700 dark:text-gray-200">
+                {{ msg.client?.full_name || '-' }}
+              </td>
+              <td class="py-3 text-sm text-gray-600 dark:text-gray-300">
+                {{ msg.template_name }}
+              </td>
+              <td class="py-3">
+                <span
+                  :class="msg.status === 'sent' || msg.status === 'delivered' ? 'badge-completed' : msg.status === 'failed' ? 'badge-failed' : 'badge-pending'"
+                  class="badge"
+                >
+                  {{ msg.status }}
+                </span>
+              </td>
+              <td class="py-3 text-sm text-gray-500 dark:text-gray-400">
+                {{ msg.created_at }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
-import { whatsappApi, companiesApi, tasksApi } from '@/utils/api'
+import { whatsappApi, companiesApi, tasksApi, excelApi } from '@/utils/api'
 import { useAuthStore } from '@/stores/auth'
 
 const authStore = useAuthStore()
@@ -274,19 +334,19 @@ const tasks = ref([])
 const messages = ref([])
 const sending = ref(false)
 const selectedByUser = ref({})
+const clientSearch = ref('')
+const phoneSearch = ref('')
 const form = ref({ company_id: '', template_name: 'equipment_recovery_notification', scheduled_date: '' })
 
 onMounted(async () => {
   await fetchCompanies()
   await fetchTasks()
   await fetchMessages()
-  if (availableDates.value.length) {
-    form.value.scheduled_date = availableDates.value[availableDates.value.length - 1]
-  }
+  form.value.scheduled_date = todayDate()
   if (isAgent.value && authStore.user?.company_id) {
     form.value.company_id = authStore.user.company_id
-  } else if (companies.value.length) {
-    form.value.company_id = companies.value[0].id
+  } else {
+    form.value.company_id = ''
   }
   selectAllDay()
 })
@@ -318,6 +378,11 @@ function normalizeDate(value) {
   return value.slice(0, 10)
 }
 
+function todayDate() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 const availableDates = computed(() => {
   const set = new Set()
   for (const t of tasks.value) {
@@ -329,16 +394,25 @@ const availableDates = computed(() => {
 
 const dayGroups = computed(() => {
   const byUser = new Map()
+  const nameQ = clientSearch.value.trim().toLowerCase()
+  const phoneQ = phoneSearch.value.replace(/\D/g, '').trim()
   for (const t of tasks.value) {
     if (normalizeDate(t.scheduled_date) !== form.value.scheduled_date) continue
+    if (!t.client) continue
+    if (nameQ && !(t.client.full_name || '').toLowerCase().includes(nameQ)) continue
+    const phoneDigits = ((t.client.phone || '') + (t.client.alternate_phone || '')).replace(/\D/g, '')
+    if (phoneQ && !phoneDigits.includes(phoneQ)) continue
     const userId = t.assignee?.id ?? 0
     const key = String(userId)
     if (!byUser.has(key)) {
       byUser.set(key, { key, userId, userName: t.assignee?.name || 'Sin asignar', clients: [] })
     }
     const group = byUser.get(key)
-    if (t.client && !group.clients.some(c => c && c.id === t.client.id)) {
-      group.clients.push(t.client)
+    if (!group.clients.some(c => c && c.id === t.client.id)) {
+      const clientWithCompany = t.client.company
+        ? t.client
+        : { ...t.client, company: t.company || null }
+      group.clients.push(clientWithCompany)
     }
   }
   const groups = [...byUser.values()].sort((a, b) => (a.userId === 0 ? 1 : b.userId === 0 ? -1 : a.userName.localeCompare(b.userName)))
@@ -348,16 +422,25 @@ const dayGroups = computed(() => {
   return groups
 })
 
-const selectedClientIds = computed(() => {
-  const ids = []
+const selectedClients = computed(() => {
+  const arr = []
   for (const g of dayGroups.value) {
     if (!selectedByUser.value[g.key]) continue
     for (const c of g.clients) {
-      if (c && c.id) ids.push(c.id)
+      if (c && c.id) arr.push(c)
     }
   }
-  return ids
+  return arr
 })
+
+const selectedClientIds = computed(() => selectedClients.value.map(c => c.id))
+
+const previewGroup = computed(() => dayGroups.value[0] || null)
+const previewClient = computed(() => selectedClients.value[0] || previewGroup.value?.clients[0] || null)
+const previewCompany = computed(() => (previewClient.value ? companyName(previewClient.value) : 'Empresa'))
+const previewOrder = computed(() => previewClient.value?.metadata?.suscriptor || previewClient.value?.order_number || 'Pedido')
+
+const companyIdOf = (c) => c?.company?.id || c?.company_id
 
 function selectAllDay() {
   selectedByUser.value = {}
@@ -374,22 +457,69 @@ function formatShortDate(date) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
+const COMPANY_COLORS = { TIGO: '#00A3E0', MASMOVIL: '#FF6B00', TELCA: '#0066CC' }
+
+async function clearFileList() {
+  const ok = confirm(
+    "¿Limpiar la lista de archivos de Excel subidos?\n\nSe eliminan los registros y archivos del historial para empezar el día siguiente. No se borran clientes ni tareas ya creadas.",
+  )
+  if (!ok) return
+  try {
+    const res = await excelApi.clearList()
+    alert(res.data?.message || "Lista de archivos limpiada")
+  } catch (e) {
+    alert("Error al limpiar: " + (e.response?.data?.message || e.message))
+  }
+}
+
+function companyName(c) {
+  if (c?.company?.name) return c.company.name
+  const local = companies.value.find(x => x && String(x.id) === String(c?.company_id))
+  if (local) return local.name
+  return 'Sin empresa'
+}
+
+function companyColor(c) {
+  if (c?.company?.code) return COMPANY_COLORS[c.company.code] || '#6B7280'
+  const local = companies.value.find(x => x && String(x.id) === String(c?.company_id))
+  if (local) return COMPANY_COLORS[local.code] || '#6B7280'
+  return '#6B7280'
+}
+
 async function sendBulk() {
-  if (!form.value.company_id) return
   const clientIds = selectedClientIds.value
   if (!clientIds.length) return
   sending.value = true
   try {
-    const companyId = isAgent.value ? (form.value.company_id || (companies.value[0]?.id)) : form.value.company_id
-    if (!companyId) return
+    let groups
+    if (form.value.company_id) {
+      const ids = selectedClients.value
+        .filter(c => String(companyIdOf(c)) === String(form.value.company_id))
+        .map(c => c.id)
+      if (!ids.length) return
+      groups = [{ companyId: form.value.company_id, ids }]
+    } else {
+      const byCompany = {}
+      for (const c of selectedClients.value) {
+        const cid = companyIdOf(c)
+        if (!cid) continue
+        ;(byCompany[cid] ||= []).push(c.id)
+      }
+      groups = Object.entries(byCompany).map(([companyId, ids]) => ({ companyId: Number(companyId), ids }))
+    }
     if (!confirm(`Enviar mensaje a ${clientIds.length} clientes?`)) return
 
-    await whatsappApi.sendBulk({
-      company_id: companyId,
-      client_ids: clientIds,
-      template_name: form.value.template_name,
-    })
-    alert(`Mensajes procesados para ${clientIds.length} clientes`)
+    let total = 0
+    for (const g of groups) {
+      if (!g.companyId || !g.ids.length) continue
+      const res = await whatsappApi.sendBulk({
+        company_id: g.companyId,
+        client_ids: g.ids,
+        template_name: form.value.template_name,
+      })
+      total += res.data?.created ?? g.ids.length
+    }
+    alert(`Mensajes procesados para ${total} clientes`)
     fetchMessages()
   } catch (e) {
     alert('Error: ' + (e.response?.data?.message || e.message))

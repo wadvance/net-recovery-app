@@ -1,7 +1,47 @@
 <template>
   <div class="min-h-screen flex bg-gray-50 dark:bg-gray-900">
+    <!-- Mobile top bar -->
+    <div class="lg:hidden fixed top-0 inset-x-0 z-40 flex items-center justify-between px-4 h-14 bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+      <button
+        type="button"
+        class="p-2 -ml-2 text-gray-600 dark:text-gray-300"
+        aria-label="Abrir menú"
+        @click="sidebarOpen = true"
+      >
+        <svg
+          class="w-6 h-6"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M4 6h16M4 12h16M4 18h16"
+          />
+        </svg>
+      </button>
+      <span class="font-bold text-gray-800 dark:text-gray-100">
+        Recovery
+      </span>
+      <span class="w-8" />
+    </div>
+
+    <!-- Backdrop (móvil) -->
+    <div
+      v-if="sidebarOpen"
+      class="lg:hidden fixed inset-0 z-40 bg-black/50"
+      @click="sidebarOpen = false"
+    />
+
     <!-- Sidebar -->
-    <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 flex flex-col fixed h-full">
+    <aside
+      :class="[
+        'w-64 bg-white dark:bg-gray-800 border-r border-gray-100 dark:border-gray-700 flex flex-col fixed h-full z-50 transition-transform duration-200 lg:translate-x-0 lg:static lg:z-auto',
+        sidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      ]"
+    >
       <!-- Logo -->
       <div class="p-6 border-b border-gray-100 dark:border-gray-700">
         <div class="flex items-center gap-3">
@@ -71,6 +111,36 @@
             </p>
           </div>
         </div>
+        <a
+          href="/Manual.pdf"
+          target="_blank"
+          class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors mb-2"
+        >
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+          </svg>
+          Manual de Usuario
+        </a>
+        <button
+          v-if="!pwa.installed"
+          class="w-full flex items-center gap-2 px-4 py-2 text-sm text-primary-600 dark:text-primary-400 hover:bg-primary-50 dark:hover:bg-primary-900/20 rounded-lg transition-colors mb-2"
+          @click="pwa.install"
+        >
+          <svg
+            class="w-4 h-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+            />
+          </svg>
+          {{ pwa.isIOS ? 'Agregar panel a pantalla de inicio' : 'Instalar panel web (atajo)' }}
+        </button>
         <button
           class="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors mb-2"
           @click="toggle()"
@@ -128,21 +198,43 @@
     </aside>
 
     <!-- Main content -->
-    <main class="flex-1 ml-64">
+    <main class="flex-1 pt-14 lg:pt-0">
       <router-view />
     </main>
+
+    <!-- Botón flotante de escaneo (todas las páginas) -->
+    <button
+      type="button"
+      class="fixed bottom-6 right-6 z-50 w-14 h-14 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-lg flex items-center justify-center transition-colors"
+      title="Escanear código de equipo"
+      @click="$refs.scanner.show()"
+    >
+      <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9V5a2 2 0 012-2h4m6 0h4a2 2 0 012 2v4m0 6v4a2 2 0 01-2 2h-4m-6 0H5a2 2 0 01-2-2v-4M7 12h10" />
+      </svg>
+    </button>
+    <ScannerModal ref="scanner" />
   </div>
 </template>
 
 <script setup>
-import { computed, h } from 'vue'
+import { computed, h, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
+import { usePwaInstall } from '@/composables/usePwaInstall'
+import ScannerModal from '@/components/ScannerModal.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const { isDark, toggle } = useTheme()
+const pwa = usePwaInstall()
+
+const sidebarOpen = ref(false)
+
+watch(() => router.currentRoute.value.fullPath, () => {
+  sidebarOpen.value = false
+})
 
 const userInitials = computed(() => {
   const name = authStore.user?.name || ''
@@ -179,15 +271,15 @@ const ClientsIcon = {
   ])
 }
 
-const TasksIcon = {
-  render: () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
-    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4' })
-  ])
-}
-
 const ImportIcon = {
   render: () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
     h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12' })
+  ])
+}
+
+const ScanIcon = {
+  render: () => h('svg', { fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24' }, [
+    h('path', { 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-width': '2', d: 'M3 9V5a2 2 0 012-2h4m6 0h4a2 2 0 012 2v4m0 6v4a2 2 0 01-2 2h-4m-6 0H5a2 2 0 01-2-2v-4M7 12h10' })
   ])
 }
 
@@ -221,8 +313,8 @@ const navigation = computed(() => {
     { path: '/companies', label: 'Empresas', icon: CompaniesIcon },
     { path: '/users', label: 'Usuarios', icon: UsersIcon },
     { path: '/clients', label: 'Clientes', icon: ClientsIcon },
-    { path: '/tasks', label: 'Tareas', icon: TasksIcon },
     { path: '/import', label: 'Importar Excel', icon: ImportIcon },
+    { path: '/scans', label: 'Escaneos', icon: ScanIcon },
     { path: '/whatsapp', label: 'WhatsApp', icon: WhatsAppIcon },
     { path: '/reports', label: 'Reportes', icon: ReportsIcon },
     { path: '/performance', label: 'Rendimiento', icon: PerformanceIcon },
@@ -230,7 +322,7 @@ const navigation = computed(() => {
   ]
 
   if (authStore.user?.role === 'agent') {
-    return items.filter(i => ['/tasks', '/whatsapp', '/performance', '/map'].includes(i.path))
+    return items.filter(i => ['/import', '/whatsapp', '/reports', '/performance', '/map'].includes(i.path))
   }
 
   if (!authStore.isSupervisor) {

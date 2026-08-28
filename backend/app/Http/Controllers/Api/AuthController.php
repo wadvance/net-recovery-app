@@ -28,7 +28,23 @@ class AuthController extends Controller
             return response()->json(['message' => 'Cuenta desactivada.'], 403);
         }
 
-        $token = $user->createToken($request->device_name ?? 'API Token')->plainTextToken;
+        $deviceName = $request->device_name
+            ?: 'device-' . strtolower(substr(md5(random_bytes(16)), 0, 16));
+
+        // Sesión única: se descartan tokens vencidos o abandonados (sin uso
+        // reciente), de modo que una sesión muerta no bloquee el login.
+        $user->tokens()
+            ->where(fn ($q) =>
+                $q->where(fn ($q2) => $q2->whereNotNull('expires_at')->where('expires_at', '<=', now()))
+                  ->orWhere(fn ($q3) => $q3->whereNotNull('last_used_at')->where('last_used_at', '<', now()->subMinutes(60)))
+            )
+            ->delete();
+
+        // Sesión única por usuario: un nuevo login SIEMPRE reemplaza la sesión
+        // anterior en lugar de bloquear (evita quedarse fuera por tokens huérfanos).
+        $user->tokens()->delete();
+
+        $token = $user->createToken($deviceName, ['*'], now()->addDays(30))->plainTextToken;
 
         return response()->json([
             'user' => $user,
@@ -55,7 +71,9 @@ class AuthController extends Controller
             'is_active' => true,
         ]);
 
-        $token = $user->createToken('API Token')->plainTextToken;
+        $deviceName = $request->device_name
+            ?: 'device-' . strtolower(substr(md5(random_bytes(16)), 0, 16));
+        $token = $user->createToken($deviceName, ['*'], now()->addDays(30))->plainTextToken;
 
         return response()->json(['user' => $user, 'token' => $token, 'token_type' => 'Bearer'], 201);
     }

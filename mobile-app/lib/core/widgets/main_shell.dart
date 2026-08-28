@@ -16,8 +16,7 @@ class MainShell extends ConsumerStatefulWidget {
 class _MainShellState extends ConsumerState<MainShell> {
   int _getIndexFromLocation(String location) {
     if (location.startsWith('/tasks')) return 0;
-    if (location.startsWith('/map')) return 1;
-    if (location.startsWith('/profile')) return 2;
+    if (location.startsWith('/profile')) return 1;
     return 0;
   }
 
@@ -27,9 +26,6 @@ class _MainShellState extends ConsumerState<MainShell> {
         context.go('/tasks');
         break;
       case 1:
-        context.go('/map');
-        break;
-      case 2:
         context.go('/profile');
         break;
     }
@@ -62,11 +58,6 @@ class _MainShellState extends ConsumerState<MainShell> {
               icon: Icon(Icons.assignment_outlined),
               activeIcon: Icon(Icons.assignment),
               label: 'Mis Tareas',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.map_outlined),
-              activeIcon: Icon(Icons.map),
-              label: 'Mapa',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.person_outlined),

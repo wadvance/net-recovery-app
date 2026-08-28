@@ -54,6 +54,23 @@
           <div class="flex justify-between">
             <span class="text-gray-500">Dirección</span><span>{{ task.client?.address }}</span>
           </div>
+          <div class="flex justify-between">
+            <span class="text-gray-500">WhatsApp</span>
+            <button
+              v-if="task.client?.phone"
+              type="button"
+              :disabled="sendingWhatsApp"
+              class="px-2 py-1 rounded text-xs font-medium text-white"
+              style="background-color:#25D366"
+              @click="sendWhatsApp"
+            >
+              {{ sendingWhatsApp ? 'Enviando…' : 'Enviar WhatsApp' }}
+            </button>
+            <span
+              v-else
+              class="text-gray-400"
+            >Sin teléfono</span>
+          </div>
         </div>
       </div>
       <div class="card lg:col-span-2">
@@ -98,9 +115,39 @@ import { tasksApi } from '@/utils/api'
 
 const route = useRoute()
 const task = ref(null)
+const sendingWhatsApp = ref(false)
 
 onMounted(async () => {
   const res = await tasksApi.get(route.params.id)
   task.value = res.data
 })
+
+async function sendWhatsApp() {
+  const phone = task.value?.client?.phone
+  if (!phone) {
+    alert('El cliente no tiene teléfono registrado')
+    return
+  }
+  sendingWhatsApp.value = true
+  try {
+    const res = await tasksApi.sendWhatsApp(task.value.id, {
+      template_name: 'equipment_recovery_notification',
+    })
+    const data = res.data
+    switch (data.status) {
+      case 'sent':
+        alert(`WhatsApp enviado a ${phone}`)
+        break
+      case 'failed':
+        alert('No se pudo enviar WhatsApp: ' + (data.error || data.message || 'error desconocido'))
+        break
+      default:
+        alert('Estado del mensaje: ' + (data.status || data.message))
+    }
+  } catch (e) {
+    alert('Error al enviar WhatsApp: ' + (e.response?.data?.message || e.message || e))
+  } finally {
+    sendingWhatsApp.value = false
+  }
+}
 </script>

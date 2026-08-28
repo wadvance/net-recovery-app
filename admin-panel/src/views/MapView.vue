@@ -1,5 +1,5 @@
 <template>
-  <div class="p-8">
+  <div class="p-4 lg:p-8">
     <div class="flex items-center justify-between mb-8">
       <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
         Mapa de Tareas - Chiriquí
@@ -35,7 +35,8 @@
     <div class="card p-0 overflow-hidden">
       <div
         id="map"
-        style="height: 600px; width: 100%;"
+        class="h-[calc(100vh-160px)] min-h-[600px] w-full"
+        style="height: calc(100vh - 160px); min-height: 600px;"
       />
     </div>
 
@@ -139,7 +140,7 @@ function initMap() {
     markers = []
     districtLayers = []
   } else {
-    map = L.map('map').setView([8.4333, -82.4333], 10)
+    map = L.map('map').setView([8.4333, -82.4333], 11)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap'
     }).addTo(map)

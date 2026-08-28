@@ -13,7 +13,7 @@ services:
       - key: APP_KEY
         value: base64:Gya0/U7CTc8D9jwKA536jyaclCn0xJJXMJuF/8GCjOw=
       - key: APP_URL
-        value: https://net-recovery-app.onrender.com
+        value: https://netrecovery.alwaysdata.net
       - key: APP_LOCALE
         value: es
       - key: APP_FALLBACK_LOCALE
@@ -42,11 +42,5 @@ services:
         sync: false
       - key: WHATSAPP_WEBHOOK_SECRET
         sync: false
-      - key: ZAVU_API_KEY
-        value: zv_live_3892d8aec663831de302a709b2841ca184871cb9e22e434a
-      - key: ZAVU_BASE_URL
-        value: https://api.zavu.dev
-      - key: ZAVU_SENDER
-        value: kd7eyphnd8t74e2mf9g2jqw2th8c7khm
-      - key: ZAVU_TEMPLATE_ID
-        value: ks71hmj5vr9b0a68r5vs3k92y18c6smf
+      - key: WHATSAPP_TEMPLATE_NAME
+        value: equipment_recovery_notification

@@ -44,19 +44,14 @@ const routes = [
         meta: { agentRestricted: true },
       },
       {
-        path: 'tasks',
-        name: 'Tasks',
-        component: () => import('@/views/TasksView.vue'),
-      },
-      {
-        path: 'tasks/:id',
-        name: 'TaskDetail',
-        component: () => import('@/views/TaskDetailView.vue'),
-      },
-      {
         path: 'import',
         name: 'ExcelImport',
         component: () => import('@/views/ExcelImportView.vue'),
+      },
+      {
+        path: 'scans',
+        name: 'Scans',
+        component: () => import('@/views/ScansView.vue'),
         meta: { agentRestricted: true },
       },
       {
@@ -68,7 +63,6 @@ const routes = [
         path: 'reports',
         name: 'Reports',
         component: () => import('@/views/ReportsView.vue'),
-        meta: { agentRestricted: true },
       },
       {
         path: 'performance',
@@ -97,7 +91,7 @@ router.beforeEach((to, from, next) => {
   } else if (to.meta.guest && authStore.isAuthenticated) {
     next('/')
   } else if (to.meta.agentRestricted && authStore.user?.role === 'agent') {
-    next('/tasks')
+    next('/import')
   } else {
     next()
   }

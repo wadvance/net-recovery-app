@@ -16,3 +16,6 @@ $app = require_once __DIR__.'/bootstrap/app.php';
 $status = $app->handleCommand(new ArgvInput);
 
 exit($status);
+
+<?php // opcache_reload_2026-08-12T02:05:33.3544788-05:00 ?>
+

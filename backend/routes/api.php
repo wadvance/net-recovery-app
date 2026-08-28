@@ -1,4 +1,5 @@
 <?php
+// v2 - rutas meta webhook activas
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
@@ -11,6 +12,9 @@ use App\Http\Controllers\Api\WhatsAppController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PerformanceController;
+use App\Http\Controllers\Api\ConversationController;
+use App\Http\Controllers\Api\EquipmentScanController;
+use App\Http\Controllers\Api\MetaWebhookController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', function () {
@@ -19,6 +23,10 @@ Route::prefix('v1')->group(function () {
 
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
+
+    // Meta Cloud API webhook directo (Opción C): verificación GET + mensajes POST
+    Route::get('/whatsapp/meta/webhook', [MetaWebhookController::class, 'verify']);
+    Route::post('/whatsapp/meta/webhook', [MetaWebhookController::class, 'receive']);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
@@ -59,8 +67,10 @@ Route::prefix('v1')->group(function () {
         Route::delete('/tasks/{task}', [TaskController::class, 'destroy']);
         Route::post('/tasks/auto-assign', [TaskController::class, 'autoAssign']);
         Route::post('/tasks/bulk-assign', [TaskController::class, 'bulkAssign']);
+        Route::post('/tasks/clear-day', [TaskController::class, 'clearDay']);
         Route::post('/tasks/{task}/assign', [TaskController::class, 'assign']);
         Route::put('/tasks/{task}/start', [TaskController::class, 'start']);
+        Route::post('/tasks/{task}/send-whatsapp', [WhatsAppController::class, 'sendForTask']);
         Route::put('/tasks/{task}/complete', [TaskController::class, 'complete']);
         Route::put('/tasks/{task}/fail', [TaskController::class, 'fail']);
         Route::put('/tasks/{task}/acknowledge', [TaskController::class, 'acknowledge']);
@@ -85,11 +95,19 @@ Route::prefix('v1')->group(function () {
         Route::put('/excel-import/{import}', [ExcelImportController::class, 'update']);
         Route::delete('/excel-import/{import}', [ExcelImportController::class, 'destroy']);
         Route::get('/excel-import/template/download', [ExcelImportController::class, 'downloadTemplate']);
+        Route::post('/excel-import/clear-all', [ExcelImportController::class, 'clearAll']);
+        Route::post('/excel-import/clear-list', [ExcelImportController::class, 'clearList']);
 
         // WhatsApp
         Route::post('/whatsapp/send-bulk', [WhatsAppController::class, 'sendBulk']);
         Route::post('/whatsapp/send-to-client', [WhatsAppController::class, 'sendToClient']);
         Route::get('/whatsapp/messages', [WhatsAppController::class, 'messages']);
+
+        // Conversations (inbox)
+        Route::get('/conversations', [ConversationController::class, 'index']);
+        Route::get('/conversations/{conversation}', [ConversationController::class, 'show']);
+        Route::put('/conversations/{conversation}/read', [ConversationController::class, 'markRead']);
+        Route::post('/conversations/{conversation}/reply', [ConversationController::class, 'reply']);
 
         // Reports
         Route::get('/reports', [ReportController::class, 'index']);
@@ -100,6 +118,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/reports/schedules', [ReportController::class, 'storeSchedule']);
         Route::put('/reports/schedules/{schedule}', [ReportController::class, 'updateSchedule']);
         Route::delete('/reports/schedules/{schedule}', [ReportController::class, 'destroySchedule']);
+
+        // Escaneo de equipos con el celular (cámara / manual)
+        Route::get('/scans/export', [EquipmentScanController::class, 'export']);
+        Route::get('/scans', [EquipmentScanController::class, 'index']);
+        Route::post('/scans', [EquipmentScanController::class, 'store']);
+        Route::delete('/scans/{scan}', [EquipmentScanController::class, 'destroy']);
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);

@@ -62,6 +62,12 @@ class PerformanceController extends Controller
         }
 
         $userId = $request->input('user_id');
+
+        // Un agente solo puede ver sus propias métricas.
+        if ($request->user()->role === 'agent') {
+            $userId = $userId ?: $request->user()->id;
+        }
+
         $metrics = $this->perfService->metrics($startDate, $endDate, $userId);
 
         return response()->json([
@@ -173,12 +179,23 @@ class PerformanceController extends Controller
             'status' => 'generating',
         ]);
 
-        GeneratePerformanceReport::dispatch($report->id);
+        // El hosting compartido no ejecuta workers de cola, así que el
+        // reporte se genera de forma síncrona dentro de la petición.
+        try {
+            (new \App\Jobs\GeneratePerformanceReport($report->id))->handle();
+        } catch (\Throwable $e) {
+            $report->update(['status' => 'failed']);
+            return response()->json([
+                'message' => 'Error generando reporte: ' . $e->getMessage(),
+            ], 422);
+        }
+
+        $report->refresh();
 
         return response()->json([
-            'message' => 'Reporte encolado. Se generará en breve.',
+            'message' => 'Reporte generado.',
             'data' => $this->normalizeReport($report),
-        ], 202);
+        ]);
     }
 
     /**

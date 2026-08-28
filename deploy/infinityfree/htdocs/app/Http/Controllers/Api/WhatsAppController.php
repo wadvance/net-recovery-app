@@ -5,31 +5,27 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\Company;
+use App\Models\Task;
 use App\Models\WhatsAppMessage;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 
 class WhatsAppController extends Controller
 {
-    protected function client(): ?\Illuminate\Http\Client\PendingRequest
-    {
-        $token = config('services.whatsapp.token');
-        $phoneNumberId = config('services.whatsapp.phone_number_id');
-        if (!$token || !$phoneNumberId) {
-            return null;
-        }
-        $version = config('services.whatsapp.version', 'v20.0');
-        return Http::withToken($token)
-            ->baseUrl("https://graph.facebook.com/{$version}/{$phoneNumberId}");
-    }
-
     /**
-     * Proveedor activo: 'zavu' si hay clave Zavu, si no 'meta' (Meta Graph API).
+     * Envía (o reintenta) el mensaje creado en la base de datos a través del
+     * proveedor de WhatsApp configurado (Twilio > Zavu > Meta). Reutilizado por
+     * sendToClient, sendForTask y sendBulk.
      */
-    protected function provider(): string
+    protected function dispatchMessage(WhatsAppMessage $message, Client $client, Company $company, string $templateName): WhatsAppMessage
     {
-        return config('services.zavu.key') ? 'zavu' : 'meta';
+        $result = (new WhatsAppService())->sendToClient($client, $company, $templateName);
+        if ($result['ok']) {
+            $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
+        } else {
+            $message->markFailed($result['error']);
+        }
+        return $message;
     }
 
     public function sendBulk(Request $request)
@@ -42,19 +38,18 @@ class WhatsAppController extends Controller
         ]);
 
         $company = Company::find($request->company_id);
-        $clientsQuery = Client::whereIn('id', $request->client_ids);
+        $clientsQuery = Client::with('company')->whereIn('id', $request->client_ids);
         if ($request->user()->role === 'agent') {
             $clientsQuery->whereHas('tasks', fn ($q) => $q->where('assigned_to', $request->user()->id));
         }
         $clients = $clientsQuery->get();
-        $client = $this->client();
-        $isZavu = $this->provider() === 'zavu';
 
         $created = 0;
         foreach ($clients as $clientRecord) {
-            $params = $this->buildTemplateParams($company, $clientRecord);
+            $clientCompany = $clientRecord->company ?: $company;
+            $params = $this->buildTemplateParams($clientCompany, $clientRecord);
             $message = WhatsAppMessage::create([
-                'company_id' => $company->id,
+                'company_id' => $clientCompany?->id ?? $company?->id,
                 'client_id' => $clientRecord->id,
                 'to_phone' => $clientRecord->formatted_phone,
                 'template_name' => $request->template_name,
@@ -64,46 +59,18 @@ class WhatsAppController extends Controller
 
             $created++;
 
-            if ($isZavu) {
-                $result = (new WhatsAppService())->sendToClient($clientRecord, $company, $request->template_name);
-                if ($result['ok']) {
-                    $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
-                } else {
-                    $message->markFailed($result['error']);
-                }
-                continue;
-            }
-
-            if ($client) {
-                try {
-                    $response = $client->post('/messages', [
-                        'messaging_product' => 'whatsapp',
-                        'to' => $clientRecord->formatted_phone,
-                        'type' => 'template',
-                        'template' => [
-                            'name' => $request->template_name,
-                            'language' => ['code' => 'es'],
-                            'components' => $this->buildParams($company, $clientRecord),
-                        ],
-                    ]);
-
-                    if ($response->ok()) {
-                        $message->markSent($response->json('messages.0.id'), $response->json());
-                    } else {
-                        $message->markFailed($response->body());
-                    }
-                } catch (\Throwable $e) {
-                    $message->markFailed($e->getMessage());
-                }
+            $result = (new WhatsAppService())->sendToClient($clientRecord, $clientCompany, $request->template_name);
+            if ($result['ok']) {
+                $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
             } else {
-                $message->markFailed('WhatsApp API no configurada');
+                $message->markFailed($result['error']);
             }
         }
 
         return response()->json([
             'message' => "Se procesaron {$created} mensajes",
             'created' => $created,
-            'configured' => (bool) $client,
+            'configured' => (bool) config('services.twilio.account_sid') || (bool) config('services.zavu.key'),
         ]);
     }
 
@@ -112,58 +79,79 @@ class WhatsAppController extends Controller
         $request->validate([
             'client_id' => 'required|exists:clients,id',
             'template_name' => 'required|string',
+            'task_id' => 'nullable|exists:tasks,id',
         ]);
 
         $company = $request->company_id ? Company::find($request->company_id) : null;
         $client = Client::with('company')->find($request->client_id);
         $company = $company ?: $client->company;
 
+        $params = $this->buildTemplateParams($company, $client);
         $message = WhatsAppMessage::create([
             'company_id' => $company?->id,
             'client_id' => $client->id,
+            'task_id' => $request->task_id,
             'to_phone' => $client->formatted_phone,
             'template_name' => $request->template_name,
+            'template_params' => $params,
             'status' => 'pending',
         ]);
 
-        if ($this->provider() === 'zavu') {
-            $result = (new WhatsAppService())->sendToClient($client, $company, $request->template_name);
-            if ($result['ok']) {
-                $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
-            } else {
-                $message->markFailed($result['error']);
-            }
-            return response()->json($message);
-        }
+        $message = $this->dispatchMessage($message, $client, $company, $request->template_name);
 
-        $api = $this->client();
-        if (!$api) {
-            $message->markFailed('WhatsApp API no configurada');
+        if ($message->status === 'failed') {
             return response()->json(['message' => $message->error_message], 503);
         }
 
-        try {
-            $response = $api->post('/messages', [
-                'messaging_product' => 'whatsapp',
-                'to' => $client->formatted_phone,
-                'type' => 'template',
-                'template' => [
-                    'name' => $request->template_name,
-                    'language' => ['code' => 'es'],
-                    'components' => $this->buildParams($company, $client),
-                ],
-            ]);
+        return response()->json($message);
+    }
 
-            if ($response->ok()) {
-                $message->markSent($response->json('wamid.value') ?? $response->json('messages.0.id'), $response->json());
-            } else {
-                $message->markFailed($response->body());
-            }
-        } catch (\Throwable $e) {
-            $message->markFailed($e->getMessage());
+    /**
+     * Envía un mensaje de WhatsApp al cliente asociado a la tarea, vinculando
+     * el mensaje a la tarea. Agente debe ser el asignado; admin/supervisor
+     * pueden enviar para cualquier tarea.
+     */
+    public function sendForTask(Request $request, Task $task)
+    {
+        $user = $request->user();
+        $role = $user->role;
+
+        if ($role === 'agent' && $task->assigned_to !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
         }
 
-        return response()->json($message);
+        $templateName = $request->input('template_name') ?: config('services.whatsapp.default_template', 'equipment_recovery_notification');
+        $request->validate([
+            'template_name' => 'nullable|string',
+        ]);
+
+        $client = $task->client;
+        if (!$client || !$client->formatted_phone || $client->formatted_phone === '+') {
+            return response()->json(['message' => 'El cliente no tiene teléfono de WhatsApp'], 422);
+        }
+
+        $company = $task->company;
+
+        $params = $this->buildTemplateParams($company, $client);
+        $message = WhatsAppMessage::create([
+            'company_id' => $company?->id,
+            'task_id' => $task->id,
+            'client_id' => $client->id,
+            'to_phone' => $client->formatted_phone,
+            'template_name' => $templateName,
+            'template_params' => $params,
+            'status' => 'pending',
+        ]);
+
+        $message = $this->dispatchMessage($message, $client, $company, $templateName);
+
+        return response()->json([
+            'message' => 'Mensaje procesado',
+            'status' => $message->status,
+            'message_id' => $message->message_id,
+            'error' => $message->error_message,
+            'whatsapp_message' => $message,
+        ]);
     }
 
     public function messages(Request $request)
@@ -187,23 +175,15 @@ class WhatsAppController extends Controller
 
     private function buildTemplateParams($company, Client $client): array
     {
+        $suscriptor = $client->metadata['suscriptor'] ?? $client->order_number;
+        $clientName = $client->full_name ?: 'Estimado cliente';
+
         return [
-            'nombre_cliente' => $client->full_name,
+            'nombre_cliente' => $clientName,
             'empresa' => $company?->name ?? 'nuestra empresa',
-            'numero_pedido' => $client->order_number,
+            'numero_pedido' => $suscriptor,
             'direccion' => $client->address,
             'telefono' => $client->phone,
-        ];
-    }
-
-    private function buildParams($company, Client $client): array
-    {
-        $params = $this->buildTemplateParams($company, $client);
-        return [
-            [
-                'type' => 'body',
-                'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
-            ],
         ];
     }
 }

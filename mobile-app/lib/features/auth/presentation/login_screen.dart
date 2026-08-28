@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 
@@ -27,10 +28,32 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
 
   @override
+  void initState() {
+    super.initState();
+    _clearForm();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _clearForm());
+  }
+
+  void _clearForm() {
+    form.control('email').value = '';
+    form.control('password').value = '';
+    form.markAsPristine();
+  }
+
+  @override
+  void dispose() {
+    form.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
 
     ref.listen(authStateProvider, (previous, next) {
+      if (!next.isAuthenticated && previous?.isAuthenticated == true) {
+        _clearForm();
+      }
       if (next.error != null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -52,26 +75,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(height: 60.h),
-              // Logo
+              SizedBox(height: 20.h),
+              // Hero illustration
               Center(
-                child: Container(
-                  width: 120.w,
-                  height: 120.w,
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  child: Icon(
-                    Icons.recycling,
-                    size: 60.sp,
-                    color: AppColors.primary,
-                  ),
+                child: SvgPicture.asset(
+                  'assets/images/login_hero.svg',
+                  width: 300.w,
+                  height: 300.w,
                 ),
               ),
-              SizedBox(height: 32.h),
+              SizedBox(height: 8.h),
               Text(
-                'Equipment Recovery',
+                'Net Recovery',
                 style: Theme.of(context).textTheme.displaySmall,
                 textAlign: TextAlign.center,
               ),
@@ -90,6 +105,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   children: [
                     ReactiveTextField<String>(
                       formControlName: 'email',
+                      autofillHints: const [],
                       decoration: const InputDecoration(
                         labelText: 'Correo electrónico',
                         prefixIcon: Icon(Icons.email_outlined),
@@ -100,6 +116,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     SizedBox(height: 16.h),
                     ReactiveTextField<String>(
                       formControlName: 'password',
+                      autofillHints: const [],
                       decoration: InputDecoration(
                         labelText: 'Contraseña',
                         prefixIcon: const Icon(Icons.lock_outlined),
@@ -140,32 +157,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                 ),
               ),
-              SizedBox(height: 24.h),
-              // Demo credentials
-              Container(
-                padding: EdgeInsets.all(16.w),
-                decoration: BoxDecoration(
-                  color: AppColors.grey100,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Credenciales de prueba:',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    SizedBox(height: 8.h),
-                    Text(
-                      'Email: juan.perez@recovery.local\nPassword: password123',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
           ),
         ),
       ),

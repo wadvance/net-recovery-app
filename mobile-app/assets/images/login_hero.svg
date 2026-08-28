@@ -1,0 +1,173 @@
+<svg width="600" height="600" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E9F7FF"/>
+      <stop offset="100%" stop-color="#C9E9FA"/>
+    </linearGradient>
+    <linearGradient id="boxGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E2B473"/>
+      <stop offset="100%" stop-color="#C9994F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <circle cx="300" cy="300" r="275" fill="url(#bgGrad)"/>
+  <circle cx="300" cy="300" r="250" fill="none" stroke="#00A3E0" stroke-opacity="0.18" stroke-width="2" stroke-dasharray="6 10"/>
+  <circle cx="300" cy="300" r="230" fill="#FFFFFF" fill-opacity="0.35"/>
+
+  <!-- Decorative dots -->
+  <circle cx="120" cy="185" r="6" fill="#00A3E0" fill-opacity="0.35"/>
+  <circle cx="478" cy="185" r="6" fill="#00A3E0" fill-opacity="0.35"/>
+  <circle cx="95" cy="120" r="4" fill="#0077B6" fill-opacity="0.4"/>
+  <circle cx="510" cy="130" r="4" fill="#0077B6" fill-opacity="0.4"/>
+  <circle cx="175" cy="520" r="5" fill="#00A3E0" fill-opacity="0.3"/>
+  <circle cx="430" cy="540" r="5" fill="#00A3E0" fill-opacity="0.3"/>
+
+  <!-- NET RECOVERY branding -->
+  <text x="300" y="58" text-anchor="middle" font-family="Poppins, sans-serif" font-size="40" font-weight="800" letter-spacing="1" fill="#0077B6">NET<tspan fill="#00A3E0"> RECOVERY</tspan></text>
+  <rect x="225" y="70" width="150" height="6" rx="3" fill="#00A3E0" fill-opacity="0.7"/>
+  <text x="300" y="90" text-anchor="middle" font-family="Poppins, sans-serif" font-size="14" font-weight="500" fill="#5A7A8A">Recuperación de equipos en casa</text>
+
+  <!-- Ground shadow -->
+  <ellipse cx="300" cy="515" rx="135" ry="16" fill="#A9DCF5" fill-opacity="0.6"/>
+
+  <!-- Legs -->
+  <rect x="262" y="370" width="32" height="132" rx="14" fill="#00334D"/>
+  <rect x="306" y="370" width="32" height="132" rx="14" fill="#00334D"/>
+
+  <!-- Shoes -->
+  <rect x="253" y="492" width="50" height="22" rx="11" fill="#1F2937"/>
+  <rect x="297" y="492" width="50" height="22" rx="11" fill="#1F2937"/>
+
+  <!-- Sleeves -->
+  <line x1="256" y1="252" x2="205" y2="336" stroke="#005A8C" stroke-width="30" stroke-linecap="round"/>
+  <line x1="344" y1="252" x2="395" y2="336" stroke="#005A8C" stroke-width="30" stroke-linecap="round"/>
+
+  <!-- Torso -->
+  <rect x="250" y="244" width="100" height="140" rx="26" fill="#005A8C"/>
+  <path d="M288 252 L300 272 L312 252 Z" fill="#FFFFFF"/>
+  <line x1="300" y1="272" x2="300" y2="376" stroke="#FFFFFF" stroke-opacity="0.8" stroke-width="3"/>
+  <circle cx="300" cy="300" r="10" fill="#FFFFFF"/>
+  <rect x="250" y="362" width="100" height="12" fill="#00334D"/>
+
+  <!-- Forearms -->
+  <line x1="205" y1="336" x2="190" y2="392" stroke="#FFDCC0" stroke-width="22" stroke-linecap="round"/>
+  <line x1="395" y1="336" x2="410" y2="392" stroke="#FFDCC0" stroke-width="22" stroke-linecap="round"/>
+
+  <!-- Head -->
+  <rect x="288" y="214" width="24" height="20" rx="7" fill="#FFDCC0"/>
+  <circle cx="300" cy="178" r="40" fill="#FFDCC0"/>
+  <circle cx="259" cy="180" r="9" fill="#FFDCC0"/>
+  <circle cx="341" cy="180" r="9" fill="#FFDCC0"/>
+  <path d="M256 184 A44 44 0 0 1 344 184 L344 172 A44 44 0 0 0 256 172 Z" fill="#2E2E2E"/>
+  <circle cx="283" cy="176" r="5" fill="#2E2E2E"/>
+  <circle cx="317" cy="176" r="5" fill="#2E2E2E"/>
+  <path d="M286 194 Q300 205 314 194" stroke="#B5654A" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <circle cx="271" cy="190" r="7" fill="#F7C5A8" fill-opacity="0.8"/>
+  <circle cx="329" cy="190" r="7" fill="#F7C5A8" fill-opacity="0.8"/>
+
+  <!-- Box -->
+  <rect x="180" y="322" width="120" height="18" fill="#D4A564"/>
+  <rect x="300" y="322" width="120" height="18" fill="#D4A564"/>
+  <rect x="285" y="320" width="30" height="20" fill="#EBD7B0"/>
+  <rect x="180" y="338" width="240" height="142" rx="10" fill="url(#boxGrad)"/>
+  <line x1="300" y1="338" x2="300" y2="480" stroke="#C9994F" stroke-width="3"/>
+  <line x1="200" y1="360" x2="200" y2="460" stroke="#EBD7B0" stroke-width="4" stroke-opacity="0.7"/>
+  <line x1="400" y1="360" x2="400" y2="460" stroke="#EBD7B0" stroke-width="4" stroke-opacity="0.7"/>
+
+  <!-- Hands holding the box -->
+  <circle cx="190" cy="395" r="16" fill="#FFDCC0"/>
+  <circle cx="410" cy="395" r="16" fill="#FFDCC0"/>
+
+  <!-- Router (on top of box) -->
+  <line x1="215" y1="268" x2="205" y2="238" stroke="#2D3A45" stroke-width="6" stroke-linecap="round"/>
+  <line x1="263" y1="268" x2="253" y2="238" stroke="#2D3A45" stroke-width="6" stroke-linecap="round"/>
+  <rect x="195" y="268" width="84" height="54" rx="7" fill="#2D3A45"/>
+  <rect x="203" y="288" width="40" height="12" rx="3" fill="#00A3E0" fill-opacity="0.9"/>
+  <circle cx="229" cy="305" r="5" fill="#00E5A8"/>
+  <circle cx="247" cy="305" r="5" fill="#00A3E0"/>
+
+  <!-- Modem (on top of box) -->
+  <line x1="318" y1="286" x2="308" y2="252" stroke="#64748B" stroke-width="6" stroke-linecap="round"/>
+  <rect x="300" y="286" width="95" height="52" rx="6" fill="#F4F6F8"/>
+  <rect x="300" y="286" width="95" height="52" rx="6" fill="none" stroke="#CBD5E1" stroke-width="2"/>
+  <rect x="320" y="300" width="50" height="14" rx="3" fill="#E2E8F0"/>
+  <circle cx="312" cy="322" r="5" fill="#00E5A8"/>
+  <circle cx="330" cy="322" r="5" fill="#00A3E0"/>
+  <circle cx="348" cy="322" r="5" fill="#94A3B8"/>
+
+  <!-- Badge: rápido -->
+  <g transform="translate(45, 108)">
+    <rect width="150" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="150" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <path d="M-2 -9 L3 1 L0 1 L1 9 L-5 -1 L-2 -1 Z" fill="#00A3E0"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="15" font-weight="600" fill="#0077B6">rápido</text>
+  </g>
+
+  <!-- Badge: vamos a su casa -->
+  <g transform="translate(385, 118)">
+    <rect width="178" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="178" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <path d="M-8 3 L0 -7 L8 3 Z" fill="#00A3E0"/>
+      <rect x="-4" y="2" width="8" height="6" fill="#FFFFFF"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="14" font-weight="600" fill="#0077B6">vamos a su casa</text>
+  </g>
+
+  <!-- Badge: confiable -->
+  <g transform="translate(28, 300)">
+    <rect width="158" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="158" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <path d="M-8 -8 L8 -8 L8 0 Q8 6 0 10 Q-8 6 -8 0 Z" fill="#00A3E0"/>
+      <path d="M-3 0 L-1 2 L4 -4" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="15" font-weight="600" fill="#0077B6">confiable</text>
+  </g>
+
+  <!-- Badge: coordinamos la cita -->
+  <g transform="translate(392, 300)">
+    <rect width="182" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="182" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <rect x="-8" y="-7" width="16" height="14" rx="2" fill="#00A3E0"/>
+      <rect x="-4" y="-10" width="2" height="5" fill="#00A3E0"/>
+      <rect x="2" y="-10" width="2" height="5" fill="#00A3E0"/>
+      <rect x="-5" y="-3" width="10" height="6" rx="1" fill="#FFFFFF"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="13.5" font-weight="600" fill="#0077B6">coordinamos la cita</text>
+  </g>
+
+  <!-- Badge: seguro -->
+  <g transform="translate(55, 470)">
+    <rect width="138" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="138" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <rect x="-6" y="-3" width="12" height="10" rx="2" fill="#00A3E0"/>
+      <path d="M-4 -3 L-4 -7 A4 4 0 0 1 4 -7 L4 -3" fill="none" stroke="#00A3E0" stroke-width="2.5"/>
+      <circle cx="0" cy="1" r="1.6" fill="#FFFFFF"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="15" font-weight="600" fill="#0077B6">seguro</text>
+  </g>
+
+  <!-- Badge: entrega con constancia -->
+  <g transform="translate(350, 478)">
+    <rect width="215" height="42" rx="21" fill="#FFFFFF" fill-opacity="0.95"/>
+    <rect width="215" height="42" rx="21" fill="none" stroke="#00A3E0" stroke-opacity="0.15" stroke-width="2"/>
+    <circle cx="22" cy="21" r="14" fill="#E3F6FF"/>
+    <g transform="translate(22,21)">
+      <rect x="-8" y="-5" width="16" height="12" rx="2" fill="#00A3E0"/>
+      <path d="M-8 -5 L0 -9 L8 -5" fill="none" stroke="#00A3E0" stroke-width="2.5" stroke-linejoin="round"/>
+      <path d="M-3 1 L-1 3 L4 -3" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="44" y="27" font-family="Poppins, sans-serif" font-size="14" font-weight="600" fill="#0077B6">entrega con constancia</text>
+  </g>
+</svg>

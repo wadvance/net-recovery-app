@@ -47,6 +47,18 @@ return [
         'key' => env('ZAVU_API_KEY'),
         'base_url' => env('ZAVU_BASE_URL', 'https://api.zavu.dev'),
         'sender' => env('ZAVU_SENDER'),
+        'webhook_secret' => env('ZAVU_WEBHOOK_SECRET'),
+    ],
+
+    'twilio' => [
+        'account_sid' => env('TWILIO_ACCOUNT_SID'),
+        'auth_token' => env('TWILIO_AUTH_TOKEN'),
+        'from' => env('TWILIO_WHATSAPP_FROM'),
+    ],
+
+    // template_name -> Content Sid aprobado en Twilio (HX...)
+    'twilio_content_templates' => [
+        'equipment_recovery_notification' => env('TWILIO_WHATSAPP_CONTENT_SID'),
     ],
 
     // template_name (Meta) -> id de plantilla aprobada en Zavu (tmpl_...)

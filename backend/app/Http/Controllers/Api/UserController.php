@@ -33,12 +33,15 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede crear usuarios');
+
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:20',
             'role' => ['required', Rule::in(['admin', 'supervisor', 'agent'])],
+            'whatsapp_sender_id' => 'nullable|string|max:64',
         ]);
 
         $user = User::create([
@@ -49,6 +52,9 @@ class UserController extends Controller
             'role' => $request->role,
             'is_active' => true,
         ]);
+        if ($request->filled('whatsapp_sender_id')) {
+            $user->update(['settings' => array_merge($user->settings ?? [], ['whatsapp_sender_id' => $request->whatsapp_sender_id])]);
+        }
 
         return response()->json($user, 201);
     }
@@ -62,14 +68,27 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'role' => ['sometimes', Rule::in(['admin', 'supervisor', 'agent'])],
             'is_active' => 'nullable|boolean',
+            'whatsapp_sender_id' => 'nullable|string|max:64',
         ]);
 
         $data = $request->only(['name', 'email', 'phone', 'role', 'is_active']);
         if ($request->filled('password')) {
+            abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede cambiar contraseñas');
             $data['password'] = Hash::make($request->password);
         }
 
         $user->update($data);
+
+        // Línea WhatsApp propia (sender Meta/Twilio) — Opción A
+        if ($request->has('whatsapp_sender_id')) {
+            $settings = $user->settings ?? [];
+            if ($request->whatsapp_sender_id) {
+                $settings['whatsapp_sender_id'] = $request->whatsapp_sender_id;
+            } else {
+                unset($settings['whatsapp_sender_id']);
+            }
+            $user->update(['settings' => $settings]);
+        }
 
         return response()->json($user);
     }
@@ -91,6 +110,8 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        abort_if($request->user()->role !== 'admin', 403, 'Solo el administrador puede restablecer contraseñas');
+
         $request->validate(['password' => 'required|string|min:8']);
         $user->update(['password' => Hash::make($request->password)]);
         return response()->json(['message' => 'Contraseña actualizada']);

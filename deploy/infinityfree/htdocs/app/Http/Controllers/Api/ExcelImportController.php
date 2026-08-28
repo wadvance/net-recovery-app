@@ -22,6 +22,9 @@ class ExcelImportController extends Controller
         $query = ExcelImport::with(['company', 'importedBy'])
             ->orderBy('created_at', 'desc');
         if ($request->has('company_id')) $query->where('company_id', $request->company_id);
+        if ($request->user()->role === 'agent') {
+            $query->where('imported_by', $request->user()->id);
+        }
         return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
@@ -32,6 +35,10 @@ class ExcelImportController extends Controller
 
     public function update(Request $request, ExcelImport $import)
     {
+        if ($request->user()->role === 'agent' && $import->imported_by !== $request->user()->id) {
+            return response()->json(['message' => 'No tienes permiso para editar esta importación'], 403);
+        }
+
         $data = $request->validate([
             'company_id' => 'sometimes|exists:companies,id',
             'original_filename' => 'sometimes|string|max:255',
@@ -50,8 +57,8 @@ class ExcelImportController extends Controller
 
     public function destroy(Request $request, ExcelImport $import)
     {
-        if ($request->user()->role === 'agent') {
-            return response()->json(['message' => 'Solo el administrador puede eliminar importaciones'], 403);
+        if ($request->user()->role === 'agent' && $import->imported_by !== $request->user()->id) {
+            return response()->json(['message' => 'No tienes permiso para eliminar esta importación'], 403);
         }
 
         $filePath = Storage::disk('local')->path($import->stored_filename);
@@ -64,11 +71,37 @@ class ExcelImportController extends Controller
         return response()->json(['message' => 'Importación eliminada correctamente']);
     }
 
+    public function clearList(Request $request)
+    {
+        $query = ExcelImport::query();
+        if ($request->user()->role === 'agent') {
+            $query->where('imported_by', $request->user()->id);
+        } elseif (!in_array($request->user()->role, ['admin', 'supervisor'], true)) {
+            return response()->json(['message' => 'No tienes permiso para limpiar la lista'], 403);
+        }
+
+        $files = $query->pluck('stored_filename')->filter();
+        foreach ($files as $stored) {
+            $filePath = Storage::disk('local')->path($stored);
+            if (is_file($filePath)) {
+                @unlink($filePath);
+            }
+        }
+
+        $deleted = $query->delete();
+
+        return response()->json([
+            'message' => 'Lista de archivos limpiada correctamente',
+            'deleted' => $deleted,
+        ]);
+    }
+
     public function import(Request $request)
     {
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
             'company_id' => 'required|exists:companies,id',
+            'scheduled_date' => 'nullable|date',
         ]);
 
         $file = $request->file('file');
@@ -79,6 +112,9 @@ class ExcelImportController extends Controller
         $rows = $spreadsheet[0] ?? [];
         $totalRows = max(count($rows) - 1, 0);
         $headers = array_map(fn($h) => trim((string) $h), array_shift($rows) ?? []);
+        $headersRaw = array_values(array_filter($headers, fn($h) => $h !== ''));
+
+        $mapping = $this->autoMapHeaders($headersRaw);
 
         $import = ExcelImport::create([
             'company_id' => $request->company_id,
@@ -86,12 +122,29 @@ class ExcelImportController extends Controller
             'original_filename' => $file->getClientOriginalName(),
             'stored_filename' => $storedFilename,
             'total_rows' => $totalRows,
+            'status' => 'uploaded',
         ]);
+
+        // Previsualización de las filas para que el agente revise el
+        // contenido del archivo en pantalla antes de procesarlo y enviarlo.
+        $preview = [];
+        foreach ($rows as $index => $row) {
+            if ($index >= 500) break;
+            $previewRow = [];
+            foreach ($headers as $i => $header) {
+                if ($header === '') continue;
+                $previewRow[$header] = $row[$i] ?? '';
+            }
+            $preview[] = $previewRow;
+        }
 
         return response()->json([
             'import' => $import,
-            'headers' => array_values(array_filter($headers, fn($h) => $h !== '')),
-            'message' => 'Archivo subido',
+            'headers' => $headersRaw,
+            'mapping' => $mapping,
+            'preview' => $preview,
+            'total_rows' => $totalRows,
+            'message' => 'Archivo subido. Revisa la previsualización y presiona "Procesar y enviar" para crear las tareas y notificar a los clientes.',
         ], 201);
     }
 
@@ -100,7 +153,13 @@ class ExcelImportController extends Controller
         $request->validate([
             'column_mapping' => 'required|array',
             'scheduled_date' => 'nullable|date',
+            'replace' => 'boolean',
+            'clear_all' => 'boolean',
         ]);
+
+        if ($request->user()->role === 'agent' && $import->imported_by !== $request->user()->id) {
+            return response()->json(['message' => 'No tienes permiso para procesar esta importación'], 403);
+        }
 
         $mapping = $request->column_mapping;
         $filePath = Storage::disk('local')->path($import->stored_filename);
@@ -108,13 +167,39 @@ class ExcelImportController extends Controller
         $excelHeaders = array_shift($rows);
 
         $successful = 0;
+        $skipped = 0;
         $failed = 0;
         $errors = [];
         $tasks = [];
         $notifiable = [];
 
+        $replace = $request->boolean('replace', true);
+        $clearAll = $request->boolean('clear_all', false);
+
         DB::beginTransaction();
         try {
+            // --- Limpiar por día: al re-importar, el día anterior no
+            //     queda y se empieza de cero (replace=true, default). ---
+            if ($replace && $import->company_id) {
+                $taskWipe = Task::where('company_id', $import->company_id);
+                if ($request->scheduled_date) {
+                    if ($clearAll) {
+                        $taskWipe->whereDate('scheduled_date', '>=', $request->scheduled_date);
+                        $scope = "a partir de {$request->scheduled_date}";
+                    } else {
+                        $taskWipe->whereDate('scheduled_date', $request->scheduled_date);
+                        $scope = "el {$request->scheduled_date}";
+                    }
+                    $wiped = $taskWipe->delete();
+                    $errors[] = "Antes de importar: {$wiped} tareas previas del {$scope} eliminadas (replace=true)";
+                } elseif ($clearAll) {
+                    $wiped = $taskWipe->delete();
+                    $errors[] = "Antes de importar: {$wiped} tareas previas de la empresa eliminadas (clear_all=true)";
+                } else {
+                    $errors[] = "replace=true pero sin scheduled_date: no se limpiaron tareas previas (envíe date para limpiar el día)";
+                }
+            }
+
             foreach ($rows as $index => $row) {
                 try {
                     $data = [];
@@ -143,8 +228,8 @@ class ExcelImportController extends Controller
                         }
                     }
 
-                    if ($fullName === '' || $cuenta === '') {
-                        $errors[] = "Fila " . ($index + 2) . ": Faltan campos obligatorios (nombre, cuenta)";
+                    if ($fullName === '' || ($cuenta === '' && $suscriptor === '')) {
+                        $errors[] = "Fila " . ($index + 2) . ": Faltan campos obligatorios (nombre, cuenta o suscriptor)";
                         $failed++;
                         continue;
                     }
@@ -182,9 +267,9 @@ class ExcelImportController extends Controller
                     $address = collect([$corregimiento, $distrito, $provincia])
                         ->filter(fn($v) => $v !== '')->unique()->implode(', ');
 
-                    $client = Client::create([
+                    $clientData = [
                         'company_id' => $companyId,
-                        'order_number' => $cuenta,
+                        'order_number' => $cuenta !== '' ? $cuenta : $suscriptor,
                         'full_name' => $fullName,
                         'phone' => $phone,
                         'alternate_phone' => $alternatePhone !== '' ? $alternatePhone : null,
@@ -195,7 +280,7 @@ class ExcelImportController extends Controller
                             'suscriptor' => $suscriptor !== '' ? $suscriptor : null,
                             'cedula' => $data['cedula'] ?? null,
                             'cliente' => $clienteCode !== '' ? $clienteCode : null,
-                            'cuenta' => $cuenta,
+                            'cuenta' => $cuenta !== '' ? $cuenta : $suscriptor,
                             'provincia' => $provincia,
                             'distrito' => $distrito,
                             'corregimiento' => $corregimiento,
@@ -203,7 +288,25 @@ class ExcelImportController extends Controller
                             'numero_celular' => $data['numero_celular'] ?? null,
                             'numero_contacto' => $data['numero_contacto'] ?? null,
                         ],
-                    ]);
+                    ];
+
+                    $client = Client::where('company_id', $companyId)
+                        ->where('phone', $phone)
+                        ->latest('id')
+                        ->first();
+                    if (!$client) {
+                        $client = Client::create($clientData);
+                    }
+
+                    if ($request->scheduled_date
+                        && Task::withoutTrashed()
+                            ->where('client_id', $client->id)
+                            ->whereDate('scheduled_date', $request->scheduled_date)
+                            ->exists()) {
+                        $errors[] = "Fila " . ($index + 2) . ": Teléfono duplicado ({$client->full_name}) para {$request->scheduled_date} - omitida";
+                        $skipped++;
+                        continue;
+                    }
 
                     $task = Task::create([
                         'company_id' => $companyId,
@@ -279,11 +382,96 @@ class ExcelImportController extends Controller
         return response()->json([
             'message' => 'Importación completada',
             'successful' => $successful,
+            'skipped' => $skipped,
             'failed' => $failed,
             'notified' => $notified,
             'notify_failed' => $notifyFailed,
             'errors' => $errors,
         ]);
+    }
+
+    public function clearAll(Request $request)
+    {
+        if ($request->user()->role === 'agent') {
+            return response()->json(['message' => 'Solo el administrador puede limpiar los datos'], 403);
+        }
+
+        $tables = ['task_comments', 'task_evidence', 'task_assignments', 'whatsapp_messages', 'routes', 'tasks', 'clients'];
+        $counts = [];
+
+        DB::transaction(function () use (&$counts, $tables) {
+            foreach ($tables as $table) {
+                $counts[$table] = DB::table($table)->count();
+                DB::table($table)->delete();
+            }
+            $counts['excel_imports'] = DB::table('excel_imports')->count();
+            DB::table('excel_imports')->delete();
+            $counts['reports'] = DB::table('reports')->count();
+            DB::table('reports')->delete();
+
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                DB::table('sqlite_sequence')
+                    ->whereIn('name', array_merge($tables, ['excel_imports', 'reports']))
+                    ->delete();
+            }
+        });
+
+        return response()->json([
+            'message' => 'Base de datos limpiada correctamente',
+            'deleted' => $counts,
+        ]);
+    }
+
+    private function autoMapHeaders(array $headers): array
+    {
+        $fields = [
+            'suscriptor' => '/suscriptor|susc|subscriber/i',
+            'full_name' => '/nombres?|first\s*name|cliente\s*nombre/i',
+            'cliente' => '/^cliente|client\s*id|^id$|^code$|codigo/i',
+            'cedula' => '/ced|identif|dni|^ci$/i',
+            'cuenta' => '/cuenta|account|^cu$|nro|numero|number|order|pedido/i',
+            'telefono_residencia_1' => '/residencia\s*1|residencial\s*1|t\.residencia\s*1|tel\.?\s*res\s*1|fono.*1|phone.*1/i',
+            'telefono_residencia_2' => '/residencia\s*2|residencial\s*2|t\.residencia\s*2|tel\.?\s*res\s*2|tel.*2|fono.*2|phone.*2/i',
+            'numero_celular' => '/celular|cel|mobile|num.*cel/i',
+            'numero_contacto' => '/contacto|contact.*number|num.*contact/i',
+            'provincia' => '/provincia|prov\b/i',
+            'distrito' => '/distrito|district/i',
+            'corregimiento' => '/corregimiento|correg|corr/i',
+            'barrio' => '/barrio|neighbor/i',
+            'usuario' => '/usuario|user|agente|agent/i',
+            'empresa' => '/empresa|compan[ií]a|operador|proveedor|marca/i',
+        ];
+
+        $mapping = [];
+        $used = [];
+        foreach ($fields as $field => $pattern) {
+            $mapping[$field] = '';
+            foreach ($headers as $h) {
+                if ($h === '' || isset($used[$h])) continue;
+                if (preg_match($pattern, $h)) {
+                    $mapping[$field] = $h;
+                    $used[$h] = true;
+                    break;
+                }
+            }
+        }
+
+        $order = [
+            0 => 'suscriptor', 1 => 'full_name', 2 => 'cliente', 3 => 'cedula',
+            4 => 'cuenta', 5 => 'telefono_residencia_1', 6 => 'telefono_residencia_2',
+            7 => 'provincia', 8 => 'distrito', 9 => 'corregimiento', 10 => 'barrio', 11 => 'usuario',
+        ];
+        foreach ($order as $i => $field) {
+            if ($mapping[$field] === '' && isset($headers[$i])) {
+                $h = $headers[$i];
+                if (!isset($used[$h])) {
+                    $mapping[$field] = $h;
+                    $used[$h] = true;
+                }
+            }
+        }
+
+        return $mapping;
     }
 
     public function downloadTemplate(Request $request)

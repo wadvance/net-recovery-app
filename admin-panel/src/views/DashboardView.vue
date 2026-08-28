@@ -1,13 +1,25 @@
 <template>
-  <div class="p-8">
+  <div class="p-4 lg:p-8">
     <!-- Header -->
-    <div class="mb-8">
-      <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
-        Dashboard
-      </h1>
-      <p class="text-gray-500 dark:text-gray-400 mt-1">
-        Resumen general del sistema de recuperación
-      </p>
+    <div class="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
+          Dashboard
+        </h1>
+        <p class="text-gray-500 dark:text-gray-400 mt-1">
+          Resumen general del sistema de recuperación
+        </p>
+      </div>
+      <button
+        type="button"
+        class="inline-flex items-center gap-2 px-5 py-3 bg-green-500 hover:bg-green-600 text-white rounded-xl font-semibold shadow-sm transition-colors"
+        @click="$refs.scanner.show()"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9V5a2 2 0 012-2h4m6 0h4a2 2 0 012 2v4m0 6v4a2 2 0 01-2 2h-4m-6 0H5a2 2 0 01-2-2v-4M7 12h10" />
+        </svg>
+        Escanear Códigos
+      </button>
     </div>
 
     <!-- Stats Cards -->
@@ -19,14 +31,14 @@
         color="blue"
       />
       <StatCard
-        title="Tareas Completadas"
+        title="Gestiones Completadas"
         :value="stats.overview?.completed_tasks || 0"
         icon="check"
         color="green"
         :subtitle="`${stats.success_rate || 0}% tasa de éxito`"
       />
       <StatCard
-        title="Tareas Pendientes"
+        title="Gestiones Pendientes"
         :value="stats.overview?.pending_tasks || 0"
         icon="clock"
         color="orange"
@@ -44,7 +56,7 @@
       <!-- Tasks by Company -->
       <div class="card">
         <h3 class="font-semibold text-gray-800 dark:text-white mb-4">
-          Tareas por Empresa
+          Gestiones por Empresa
         </h3>
         <div class="space-y-3">
           <div
@@ -115,10 +127,10 @@
           Rendimiento de Agentes
         </h3>
         <router-link
-          to="/tasks"
+          to="/import"
           class="text-sm text-primary-500 hover:text-primary-600 dark:text-primary-400 dark:hover:text-primary-300"
         >
-          Ver todas las tareas →
+          Ver importaciones →
         </router-link>
       </div>
       <div class="overflow-x-auto">
@@ -184,6 +196,8 @@
         </table>
       </div>
     </div>
+
+    <ScannerModal ref="scanner" />
   </div>
 </template>
 
@@ -191,6 +205,7 @@
 import { ref, onMounted } from 'vue'
 import { dashboardApi } from '@/utils/api'
 import StatCard from '@/components/StatCard.vue'
+import ScannerModal from '@/components/ScannerModal.vue'
 
 const stats = ref({})
 const agents = ref([])

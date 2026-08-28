@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/models/task_model.dart';
+import '../../scans/presentation/equipment_scan_screen.dart';
 import '../data/task_repository.dart';
 
 final taskDetailProvider = FutureProvider.family.autoDispose<TaskModel, int>((ref, taskId) async {
@@ -72,6 +73,26 @@ class _TaskDetailContentState extends ConsumerState<_TaskDetailContent> {
       children: [
         // Action buttons bar
         _buildActionBar(task),
+        // Scan equipment button
+        Padding(
+          padding: EdgeInsets.fromLTRB(16.w, 12.h, 16.w, 0),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => _scanEquipment(task),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Escanear equipo'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.completed,
+                foregroundColor: AppColors.white,
+                padding: EdgeInsets.symmetric(vertical: 14.h),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+              ),
+            ),
+          ),
+        ),
         // Content
         Expanded(
           child: SingleChildScrollView(
@@ -155,6 +176,18 @@ class _TaskDetailContentState extends ConsumerState<_TaskDetailContent> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Abre el escáner de equipos y refresca la tarea al volver.
+  Future<void> _scanEquipment(TaskModel task) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => EquipmentScanScreen(
+          taskId: task.id,
+          clientName: task.client?.fullName,
+        ),
       ),
     );
   }

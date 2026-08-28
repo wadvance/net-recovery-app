@@ -68,6 +68,11 @@ $htaccess = @'
     RewriteRule ^ index.php [L]
 </IfModule>
 
+# MIME types para el PWA (manifest y service worker)
+AddType application/manifest+json .webmanifest
+AddType application/json .json
+AddType text/javascript .js
+
 # Protect sensitive files
 <FilesMatch "^(\.env|composer\.json|composer\.lock|artisan)$">
     Require all denied

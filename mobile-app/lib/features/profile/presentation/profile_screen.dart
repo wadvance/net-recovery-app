@@ -54,20 +54,23 @@ class ProfileScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),
                   SizedBox(height: 8.h),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _getRoleLabel(user.role),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
+                  // Mostrar rol solo para administradores
+                  user?.isAdmin == true
+                      ? Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+                          decoration: BoxDecoration(
+                            color: AppColors.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _getRoleLabel(user!.role),
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
                   SizedBox(height: 32.h),
                   // Menu items
                   _MenuItem(
@@ -98,6 +101,13 @@ class ProfileScreen extends ConsumerWidget {
                       _showAboutDialog(context);
                     },
                   ),
+                  if (user?.isAdmin == true || user?.role == 'supervisor') ...[
+                    _MenuItem(
+                      icon: Icons.delete,
+                      title: 'Eliminar usuario',
+                      onTap: () => _confirmDeleteUser(context, ref),
+                    ),
+                  ],
                   SizedBox(height: 24.h),
                   // Logout button
                   SizedBox(
@@ -140,6 +150,43 @@ class ProfileScreen extends ConsumerWidget {
         const Text('Aplicación para gestión de recuperación de equipos.'),
       ],
     );
+  }
+
+  Future<void> _confirmDeleteUser(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Eliminar usuario'),
+        content: const Text('¿Estás seguro de que deseas eliminar este usuario? Esta acción no se puede deshacer.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Eliminar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await ref.read(authStateProvider.notifier).deleteUser();
+        await ref.read(authStateProvider.notifier).logout();
+        if (context.mounted) {
+          context.go('/login');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al eliminar usuario: $e')),
+          );
+        }
+      }
+    }
   }
 
   Future<void> _handleLogout(BuildContext context, WidgetRef ref) async {

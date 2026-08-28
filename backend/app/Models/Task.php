@@ -31,6 +31,13 @@ class Task extends Model
     public function assignments(): HasMany { return $this->hasMany(TaskAssignment::class); }
     public function evidence(): HasMany { return $this->hasMany(TaskEvidence::class); }
     public function comments(): HasMany { return $this->hasMany(TaskComment::class); }
+    public function whatsappMessages(): HasMany { return $this->hasMany(WhatsAppMessage::class); }
+
+    public function whatsappStatus(): ?string
+    {
+        $last = $this->whatsappMessages()->latest()->first();
+        return $last?->status;
+    }
 
     public function scopeAssignedTo($q, $userId) { return $q->where('assigned_to', $userId); }
     public function scopeForDate($q, $date) { return $q->where('scheduled_date', $date); }

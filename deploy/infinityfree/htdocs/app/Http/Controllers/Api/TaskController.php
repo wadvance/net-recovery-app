@@ -15,7 +15,7 @@ class TaskController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Task::with(['client', 'assignee', 'company']);
+        $query = Task::with(['client.company', 'assignee', 'company']);
         if ($request->user()->role === 'agent') {
             $query->where('assigned_to', $request->user()->id);
         }
@@ -53,6 +53,8 @@ class TaskController extends Controller
                     'alternate_phone' => $client->alternate_phone,
                     'order_number' => $client->order_number,
                     'address' => $client->address,
+                    'company_id' => $client->company_id,
+                    'company' => $client->company ? ['id' => $client->company->id, 'name' => $client->company->name, 'code' => $client->company->code] : null,
                     'metadata' => [
                         'suscriptor' => $meta['suscriptor'] ?? null,
                         'cedula' => $meta['cedula'] ?? null,
@@ -133,6 +135,74 @@ class TaskController extends Controller
     {
         $task->delete();
         return response()->json(['message' => 'Tarea eliminada']);
+    }
+
+    public function clearDay(Request $request)
+    {
+        if (!in_array($request->user()->role, ['admin', 'supervisor', 'god'], true)) {
+            return response()->json(['message' => 'Solo admin o supervisor'], 403);
+        }
+
+        $request->validate([
+            'company_id' => 'required|exists:companies,id',
+            'date' => 'nullable|date',
+            'phones' => 'nullable|array',
+        ]);
+
+        $companyId = $request->company_id;
+        $date = $request->date;
+        $phones = $request->filled('phones') ? array_filter(array_map('trim', $request->phones)) : null;
+
+        $removedTasks = 0;
+        $removedClients = 0;
+
+        DB::transaction(function () use ($companyId, $date, $phones, &$removedTasks, &$removedClients) {
+            // 1) Eliminar TAREAS duplicadas por (teléfono, día): conservar la más antigua.
+            $taskQuery = Task::where('company_id', $companyId)
+                ->whereNotNull('scheduled_date')
+                ->whereHas('client', function ($q) use ($phones) {
+                    $q->whereNotNull('phone')->where('phone', '!=', '');
+                    if ($phones) $q->whereIn('phone', $phones);
+                });
+            if ($date) $taskQuery->whereDate('scheduled_date', $date);
+
+            $groups = $taskQuery->with('client')->get()
+                ->groupBy(function ($t) {
+                    return ($t->client->phone ?? '') . '|' . ($t->scheduled_date ? $t->scheduled_date->format('Y-m-d') : 'NULL');
+                });
+
+            $priority = ['completed' => 0, 'in_progress' => 1, 'assigned' => 2, 'pending' => 3, 'failed' => 4];
+            foreach ($groups as $group) {
+                if ($group->count() <= 1) continue;
+                $keep = $group->sortBy([fn ($t) => $priority[$t->status] ?? 5, 'id'])->first();
+                $keepId = $keep->id;
+                $removeIds = $group->pluck('id')->diff([$keepId])->all();
+                $removedTasks += Task::whereIn('id', $removeIds)->delete();
+            }
+
+            // 2) Eliminar CLIENTES duplicados por teléfono: conservar el más antiguo,
+            //    solo si no le quedan tareas (cliente sin tareas huérfano).
+            $clientQuery = Client::where('company_id', $companyId)->whereNotNull('phone')->where('phone', '!=', '');
+            if ($phones) $clientQuery->whereIn('phone', $phones);
+
+            foreach ($clientQuery->get()->groupBy('phone') as $group) {
+                if ($group->count() <= 1) continue;
+                $keepId = $group->min('id');
+                foreach ($group as $client) {
+                    if ($client->id == $keepId) continue;
+                    if ($client->tasks()->count() === 0) {
+                        $client->delete();
+                        $removedClients++;
+                    }
+                }
+            }
+        });
+
+        return response()->json([
+            'message' => "Duplicados eliminados: {$removedTasks} tareas, {$removedClients} clientes.",
+            'tasks_removed' => $removedTasks,
+            'clients_removed' => $removedClients,
+        ]);
     }
 
     public function myTasks(Request $request)

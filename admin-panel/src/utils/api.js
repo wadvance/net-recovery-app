@@ -95,6 +95,7 @@ export const tasksApi = {
   }),
   getComments: (id) => api.get(`/tasks/${id}/comments`),
   addComment: (id, data) => api.post(`/tasks/${id}/comments`, data),
+  sendWhatsApp: (id, data) => api.post(`/tasks/${id}/send-whatsapp`, data),
 }
 
 // Excel Import API
@@ -108,6 +109,8 @@ export const excelApi = {
   update: (id, data) => api.put(`/excel-import/${id}`, data),
   delete: (id) => api.delete(`/excel-import/${id}`),
   downloadTemplate: () => api.get('/excel-import/template/download', { responseType: 'blob' }),
+  clearAll: () => api.post('/excel-import/clear-all'),
+  clearList: () => api.post('/excel-import/clear-list'),
 }
 
 // WhatsApp API

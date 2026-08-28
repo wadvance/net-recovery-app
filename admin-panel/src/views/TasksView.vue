@@ -36,8 +36,8 @@
           <select
             v-model="agentFilterName"
             class="input max-w-xs"
-            @change="onAgentInput"
             :disabled="isAgent"
+            @change="onAgentInput"
           >
             <option
               v-if="isAgent"
@@ -522,12 +522,25 @@
                     </div>
                   </td>
                   <td class="px-4 py-3">
-                    <router-link
-                      :to="`/tasks/${task.id}`"
-                      class="text-sm text-primary-500 font-medium"
-                    >
-                      Ver
-                    </router-link>
+                    <div class="flex items-center gap-2">
+                      <router-link
+                        :to="`/tasks/${task.id}`"
+                        class="text-sm text-primary-500 font-medium"
+                      >
+                        Ver
+                      </router-link>
+                      <button
+                        v-if="task.client?.phone"
+                        type="button"
+                        :disabled="sendingWhatsApp.has(task.id)"
+                        class="px-2 py-1 rounded text-xs font-medium text-white"
+                        style="background-color:#25D366"
+                        title="Enviar WhatsApp al cliente"
+                        @click="sendWhatsApp(task)"
+                      >
+                        {{ sendingWhatsApp.has(task.id) ? 'Enviando…' : 'WhatsApp' }}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -724,8 +737,8 @@ const isAgent = computed(() => authStore.user?.role === 'agent')
 const tasks = ref([])
 const companies = ref([])
 const agents = ref([])
-const agentFilterName = ref('')
-const agentFilterId = ref('')
+const agentFilterName = ref(isAgent.value ? (authStore.user?.name || '') : '')
+const agentFilterId = ref(isAgent.value ? (authStore.user?.id || '') : '')
 const statusFilter = ref('')
 const selectedDate = ref('')
 const expanded = ref({})
@@ -736,6 +749,7 @@ const loading = ref(false)
 const loadError = ref('')
 const loadedOnce = ref(false)
 const assigningTask = ref(null)
+const sendingWhatsApp = ref(new Set())
 const autoCounts = ref([])
 const expandedAuto = ref({})
 const poolClients = ref([])
@@ -757,8 +771,6 @@ onMounted(async () => {
   await fetchAgents()
   await fetchPool()
   if (isAgent.value) {
-    agentFilterName.value = authStore.user?.name || ''
-    agentFilterId.value = authStore.user?.id || ''
     await fetchTasks()
     const today = new Date().toISOString().split('T')[0]
     if (availableDates.value.includes(today)) selectedDate.value = today
@@ -997,6 +1009,35 @@ async function changeAssignee(task, userId) {
     } finally {
       assigningTask.value = null
     }
+  }
+}
+
+async function sendWhatsApp(task) {
+  const phone = task.client?.phone
+  if (!phone) {
+    alert('El cliente no tiene teléfono registrado')
+    return
+  }
+  sendingWhatsApp.value.add(task.id)
+  try {
+    const res = await tasksApi.sendWhatsApp(task.id, {
+      template_name: 'equipment_recovery_notification',
+    })
+    const data = res.data
+    switch (data.status) {
+      case 'sent':
+        alert(`WhatsApp enviado a ${phone}`)
+        break
+      case 'failed':
+        alert('No se pudo enviar WhatsApp: ' + (data.error || data.message || 'error desconocido'))
+        break
+      default:
+        alert('Estado del mensaje: ' + (data.status || data.message))
+    }
+  } catch (e) {
+    alert('Error al enviar WhatsApp: ' + (e.response?.data?.message || e.message || e))
+  } finally {
+    sendingWhatsApp.value.delete(task.id)
   }
 }
 

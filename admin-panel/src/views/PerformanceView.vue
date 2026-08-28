@@ -1,5 +1,5 @@
 <template>
-  <div class="p-8">
+  <div class="p-4 lg:p-8">
     <!-- Header -->
     <div class="mb-8">
       <h1 class="text-2xl font-bold text-gray-800 dark:text-white">

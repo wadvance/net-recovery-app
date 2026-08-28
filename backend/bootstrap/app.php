@@ -6,6 +6,8 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Schedule;
 use App\Console\Commands\GeneratePerformanceReports;
+use App\Console\Commands\CleanupDailyExcelImports;
+use App\Http\Middleware\DailyExcelCleanup;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,9 +18,13 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withCommands([
         GeneratePerformanceReports::class,
+        CleanupDailyExcelImports::class,
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->redirectGuestsTo(null);
+        $middleware->api(prepend: [
+            DailyExcelCleanup::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

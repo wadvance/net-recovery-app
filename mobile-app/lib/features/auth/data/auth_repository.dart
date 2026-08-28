@@ -62,6 +62,14 @@ class AuthRepository {
     }
   }
 
+  Future<void> deleteUser() async {
+    try {
+      await _dio.delete('/users/me');
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
   Future<UserModel> updateProfile({
     String? name,
     String? phone,
@@ -187,6 +195,11 @@ class AuthNotifier extends StateNotifier<AuthState> {
 
   Future<void> logout() async {
     await _repository.logout();
+    state = AuthState.initial();
+  }
+
+  Future<void> deleteUser() async {
+    await _repository.deleteUser();
     state = AuthState.initial();
   }
 

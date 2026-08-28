@@ -170,10 +170,14 @@ class ReportController extends Controller
         $spreadsheet->getActiveSheet()->fromArray($rows, null, 'A1');
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
 
-        $tempFile = tempnam(sys_get_temp_dir(), 'report_');
+        $tmpDir = storage_path('app/private/tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0775, true);
+        }
+        $tempFile = $tmpDir . '/report_' . uniqid('', true) . '.xlsx';
         $writer->save($tempFile);
         Storage::disk('local')->put($path, file_get_contents($tempFile));
-        unlink($tempFile);
+        @unlink($tempFile);
 
         return $path;
     }

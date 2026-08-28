@@ -43,6 +43,8 @@ SESSION_LIFETIME=120
 CACHE_STORE=database
 QUEUE_CONNECTION=sync
 
+FRONTEND_URL=https://${domain}
+
 ZAVU_API_KEY=zv_live_3892d8aec663831de302a709b2841ca184871cb9e22e434a
 ZAVU_BASE_URL=https://api.zavu.dev
 ZAVU_SENDER=kd7eyphnd8t74e2mf9g2jqw2th8c7khm
@@ -68,39 +70,8 @@ $content = $content.Replace("__DIR__.'/../bootstrap/app.php'", "__DIR__.'/bootst
 $content = $content.Replace("__DIR__.'/../storage", "__DIR__.'/storage")
 Set-Content -Path $index -Value $content -Encoding utf8
 
-# 8. Create root .htaccess with Laravel routing + storage rewrite
-$htaccess = @'
-<IfModule mod_rewrite.c>
-    <IfModule mod_negotiation.c>
-        Options -MultiViews
-    </IfModule>
-
-    RewriteEngine On
-
-    # Serve /storage/* from storage/app/public
-    RewriteCond %{REQUEST_URI} ^/storage/
-    RewriteRule ^storage/(.*)$ storage/app/public/$1 [L]
-
-    # Handle Authorization Header
-    RewriteCond %{HTTP:Authorization} .
-    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
-
-    RewriteCond %{HTTP:x-xsrf-token} .
-    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
-
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
-</IfModule>
-
-# Protect sensitive files
-<FilesMatch "^(\.env|composer\.json|composer\.lock|artisan)$">
-    Require all denied
-</FilesMatch>
-
-Options -Indexes
-'@
-Set-Content -Path (Join-Path $staging ".htaccess") -Value $htaccess -Encoding utf8
+# 8. Create root .htaccess from the improved template (SPA rewrite + no-cache)
+Copy-Item (Join-Path $PSScriptRoot "ezyro\htaccess-root") (Join-Path $staging ".htaccess") -Force
 
 # 9. Protect storage internals but allow app/public
 New-Item -ItemType Directory -Force -Path (Join-Path $staging "storage\app\public") | Out-Null

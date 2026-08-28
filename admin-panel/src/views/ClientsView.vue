@@ -1,5 +1,5 @@
 <template>
-  <div class="p-8">
+  <div class="p-4 lg:p-8">
     <div class="flex items-center justify-between mb-8">
       <div>
         <h1 class="text-2xl font-bold text-gray-800 dark:text-white">
@@ -377,7 +377,7 @@ const companyFilter = ref('')
 const userFilterName = ref('')
 const userFilterId = ref('')
 const dateFilter = ref('')
-const unassignedOnly = ref(true)
+const unassignedOnly = ref(false)
 const selected = ref([])
 const showAssignModal = ref(false)
 const assignForm = ref({ user_id: '', scheduled_date: '' })

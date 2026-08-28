@@ -78,9 +78,13 @@
             <input
               v-model="form.email"
               type="email"
+              name="email"
               class="input"
-              placeholder="admin@recovery.local"
+              placeholder="tu@correo.com"
+              autocomplete="off"
+              :readonly="emailLocked"
               required
+              @focus="emailLocked = false"
             >
           </div>
 
@@ -90,9 +94,13 @@
               <input
                 v-model="form.password"
                 :type="showPassword ? 'text' : 'password'"
+                name="password"
                 class="input pr-10"
                 placeholder="••••••••"
+                autocomplete="new-password"
+                :readonly="passwordLocked"
                 required
+                @focus="passwordLocked = false"
               >
               <button
                 type="button"
@@ -156,25 +164,13 @@
           </button>
         </form>
 
-        <!-- Demo credentials -->
-        <div class="mt-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <p class="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">
-            Credenciales de prueba:
-          </p>
-          <p class="text-xs text-gray-500 dark:text-gray-400 font-mono">
-            admin@recovery.local
-          </p>
-          <p class="text-xs text-gray-500 dark:text-gray-400 font-mono">
-            password123
-          </p>
-        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTheme } from '@/composables/useTheme'
@@ -184,11 +180,18 @@ const authStore = useAuthStore()
 const { isDark, toggle } = useTheme()
 
 const form = ref({
-  email: 'admin@recovery.local',
-  password: 'password123',
+  email: '',
+  password: '',
 })
 
+const emailLocked = ref(true)
+const passwordLocked = ref(true)
 const showPassword = ref(false)
+
+onMounted(() => {
+  form.value.email = ''
+  form.value.password = ''
+})
 
 async function handleLogin() {
   const success = await authStore.login(form.value)

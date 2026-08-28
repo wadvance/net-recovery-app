@@ -5,7 +5,6 @@ import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/presentation/login_screen.dart';
 import '../../features/tasks/presentation/tasks_screen.dart';
 import '../../features/tasks/presentation/task_detail_screen.dart';
-import '../../features/map/presentation/map_screen.dart';
 import '../../features/profile/presentation/profile_screen.dart';
 import '../widgets/main_shell.dart';
 
@@ -54,11 +53,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 },
               ),
             ],
-          ),
-          GoRoute(
-            path: '/map',
-            name: 'map',
-            builder: (context, state) => const MapScreen(),
           ),
           GoRoute(
             path: '/profile',

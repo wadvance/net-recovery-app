@@ -4,6 +4,6 @@ RUN echo "upload_max_filesize=50M" >> /usr/local/etc/php/conf.d/uploads.ini && e
 WORKDIR /app
 COPY backend/ ./
 RUN COMPOSER_ALLOW_SUPERUSER=1 composer install --no-interaction --optimize-autoloader --no-dev
-RUN cp .env.example .env && php artisan key:generate --ansi && php artisan migrate --force --seed
+RUN mkdir -p storage/app/imports storage/app/public storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache && chmod -R 777 storage bootstrap/cache && cp .env.example .env && php artisan key:generate --ansi && php artisan migrate --force --seed
 EXPOSE 8000
-CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+CMD ["sh", "-c", "php artisan config:clear && php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]

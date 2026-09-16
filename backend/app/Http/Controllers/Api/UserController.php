@@ -42,6 +42,9 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'role' => ['required', Rule::in(['admin', 'supervisor', 'agent'])],
             'whatsapp_sender_id' => 'nullable|string|max:64',
+            'whatsapp_api_key' => 'nullable|string|max:255',
+            'whatsapp_phone_number_id' => 'nullable|string|max:64',
+            'whatsapp_phone_number' => 'nullable|string|max:20',
         ]);
 
         $user = User::create([
@@ -52,8 +55,22 @@ class UserController extends Controller
             'role' => $request->role,
             'is_active' => true,
         ]);
+
+        $settings = [];
         if ($request->filled('whatsapp_sender_id')) {
-            $user->update(['settings' => array_merge($user->settings ?? [], ['whatsapp_sender_id' => $request->whatsapp_sender_id])]);
+            $settings['whatsapp_sender_id'] = $request->whatsapp_sender_id;
+        }
+        if ($request->filled('whatsapp_api_key')) {
+            $settings['whatsapp_api_key'] = $request->whatsapp_api_key;
+        }
+        if ($request->filled('whatsapp_phone_number_id')) {
+            $settings['whatsapp_phone_number_id'] = $request->whatsapp_phone_number_id;
+        }
+        if ($request->filled('whatsapp_phone_number')) {
+            $settings['whatsapp_phone_number'] = $request->whatsapp_phone_number;
+        }
+        if ($settings) {
+            $user->update(['settings' => $settings]);
         }
 
         return response()->json($user, 201);
@@ -69,6 +86,9 @@ class UserController extends Controller
             'role' => ['sometimes', Rule::in(['admin', 'supervisor', 'agent'])],
             'is_active' => 'nullable|boolean',
             'whatsapp_sender_id' => 'nullable|string|max:64',
+            'whatsapp_api_key' => 'nullable|string|max:255',
+            'whatsapp_phone_number_id' => 'nullable|string|max:64',
+            'whatsapp_phone_number' => 'nullable|string|max:20',
         ]);
 
         $data = $request->only(['name', 'email', 'phone', 'role', 'is_active']);
@@ -79,16 +99,37 @@ class UserController extends Controller
 
         $user->update($data);
 
-        // Línea WhatsApp propia (sender Meta/Twilio) — Opción A
+        // Actualizar settings de WhatsApp
+        $settings = $user->settings ?? [];
         if ($request->has('whatsapp_sender_id')) {
-            $settings = $user->settings ?? [];
             if ($request->whatsapp_sender_id) {
                 $settings['whatsapp_sender_id'] = $request->whatsapp_sender_id;
             } else {
                 unset($settings['whatsapp_sender_id']);
             }
-            $user->update(['settings' => $settings]);
         }
+        if ($request->has('whatsapp_api_key')) {
+            if ($request->whatsapp_api_key) {
+                $settings['whatsapp_api_key'] = $request->whatsapp_api_key;
+            } else {
+                unset($settings['whatsapp_api_key']);
+            }
+        }
+        if ($request->has('whatsapp_phone_number_id')) {
+            if ($request->whatsapp_phone_number_id) {
+                $settings['whatsapp_phone_number_id'] = $request->whatsapp_phone_number_id;
+            } else {
+                unset($settings['whatsapp_phone_number_id']);
+            }
+        }
+        if ($request->has('whatsapp_phone_number')) {
+            if ($request->whatsapp_phone_number) {
+                $settings['whatsapp_phone_number'] = $request->whatsapp_phone_number;
+            } else {
+                unset($settings['whatsapp_phone_number']);
+            }
+        }
+        $user->update(['settings' => $settings]);
 
         return response()->json($user);
     }

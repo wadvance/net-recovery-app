@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Client;
 use App\Models\Company;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -14,16 +15,24 @@ use Illuminate\Support\Facades\Http;
  */
 class WhatsAppService
 {
-    public function sendToClient(Client $client, Company $company, ?string $templateName = null, ?string $senderId = null): array
+    public function sendToClient(Client $client, Company $company, ?string $templateName = null, ?string $senderId = null, ?User $user = null): array
     {
         $to = '+' . $client->formatted_phone;
         if (!$to || $to === '+') {
             return $this->result(false, null, 'Cliente sin telefono');
         }
 
-        $provider = $this->provider();
+        $provider = $this->provider($user);
         if (!$provider) {
             return $this->result(false, null, 'WhatsApp API no configurada');
+        }
+
+        if ($provider === 'zavu') {
+            return $this->sendViaZavu($to, $client, $company, $templateName, $user);
+        }
+
+        if ($provider === 'ycloud') {
+            return $this->sendViaYCloud($to, $client, $company, $templateName, $user);
         }
 
         if ($provider === 'meta') {
@@ -35,6 +44,48 @@ class WhatsAppService
         }
 
         return $this->result(false, null, 'WhatsApp API no configurada');
+    }
+
+    private function sendViaYCloud(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array
+    {
+        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.ycloud.api_key');
+        $fromNumber = $user?->settings['whatsapp_phone_number'] ?? config('services.ycloud.phone_number');
+        if (!$apiKey || !$fromNumber) {
+            return $this->result(false, null, 'YCloud no configurado');
+        }
+        $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
+        $params = $this->buildParams($client, $company);
+        $payload = [
+            'from' => $fromNumber,
+            'to' => $to,
+            'type' => $templateName ? 'template' : 'text',
+        ];
+        if ($templateName) {
+            $payload['template'] = [
+                'name' => $templateName,
+                'language' => ['code' => 'es'],
+                'components' => [[
+                    'type' => 'body',
+                    'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
+                ]],
+            ];
+        } else {
+            $payload['text'] = ['body' => $this->fallbackText($client, $company)];
+        }
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
+                ->post("{$baseUrl}/v2/whatsapp/messages", $payload);
+            $body = $response->json();
+            if ($response->ok() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, $body);
+            }
+            $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
     }
 
     private function sendViaMeta(string $to, Client $client, Company $company, ?string $templateName): array
@@ -139,20 +190,28 @@ class WhatsAppService
         }
     }
 
-    public function sendTextReply(string $to, string $text, ?string $templateName = null): array
+    public function sendTextReply(string $to, string $text, ?string $templateName = null, ?User $user = null): array
     {
         $to = '+' . ltrim($to, '+');
         if (!$to || $to === '+') {
             return $this->result(false, null, 'Destino sin telefono');
         }
 
-        $provider = $this->provider();
+        $provider = $this->provider($user);
         if (!$provider) {
             return $this->result(false, null, 'WhatsApp API no configurada');
         }
 
+        if ($provider === 'zavu') {
+            return $this->sendTextViaZavu($to, $text, $user);
+        }
+
         if ($provider === 'twilio') {
             return $this->sendTextViaTwilio($to, $text);
+        }
+
+        if ($provider === 'ycloud') {
+            return $this->sendTextViaYCloud($to, $text, $user);
         }
 
         if ($provider === 'meta') {
@@ -197,6 +256,36 @@ class WhatsAppService
         }
     }
 
+    private function sendTextViaYCloud(string $to, string $text, ?User $user = null): array
+    {
+        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.ycloud.api_key');
+        $phoneNumberId = $user?->settings['whatsapp_phone_number_id'] ?? config('services.ycloud.phone_number_id');
+        if (!$apiKey || !$phoneNumberId) {
+            return $this->result(false, null, 'YCloud no configurado');
+        }
+        $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['X-API-Key' => $apiKey])
+                ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => ltrim($to, '+'),
+                    'type' => 'text',
+                    'text' => ['body' => $text],
+                ]);
+            $body = $response->json();
+            if ($response->ok() && isset($body['messages'][0]['id'])) {
+                return $this->result(true, $body['messages'][0]['id'], null, $body);
+            }
+            $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
     private function sendTextViaMeta(string $to, string $text): array
     {
         $token = config('services.whatsapp.token');
@@ -233,8 +322,19 @@ class WhatsAppService
         }
     }
 
-    private function provider(): ?string
+    private function provider(?User $user = null): ?string
     {
+        // Si el usuario tiene credenciales propias, usarlas
+        if ($user && $user->settings['whatsapp_api_key'] ?? null) {
+            return 'ycloud';
+        }
+        // YCloud tiene prioridad global si está configurado
+        if (config('services.ycloud.api_key') && config('services.ycloud.phone_number_id')) {
+            return 'ycloud';
+        }
+        if (config('services.zavu.api_key')) {
+            return 'zavu';
+        }
         if (config('services.whatsapp.token') && config('services.whatsapp.phone_number_id')) {
             return 'meta';
         }
@@ -268,8 +368,100 @@ class WhatsAppService
         );
     }
 
+    private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array
+    {
+        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.zavu.api_key');
+        $senderId = $user?->phone ?? $user?->settings['whatsapp_sender_id'] ?? config('services.zavu.sender_id');
+        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
+        if (!$apiKey) {
+            return $this->result(false, null, 'Zavu no configurado');
+        }
+        $text = $this->fallbackText($client, $company);
+        $phone = ltrim($to, '+');
+        $params = $this->buildParams($client, $company);
+        $phone = '+'.ltrim($to, '+');
+        $templateId = config('services.zavu.template_id');
+        try {
+            $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
+            $payload = ['to' => $phone, 'channel' => 'whatsapp'];
+            if ($templateId) {
+                $payload['messageType'] = 'template';
+                $payload['content'] = ['templateId' => $templateId, 'templateVariables' => [
+                    '1' => $params['nombre_cliente'], '2' => $params['empresa'], '3' => $params['numero_pedido'], '4' => $params['direccion'], '5' => $params['telefono'],
+                ]];
+            } else {
+                $payload['text'] = $this->fallbackText($client, $company);
+            }
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders($headers)
+                ->post(rtrim($baseUrl, '/').'/v1/messages', $payload);
+            $body = $response->json();
+            if ($response->successful() && isset($body['message']['id'])) {
+                return $this->result(true, $body['message']['id'], null, is_array($body) ? $body : []);
+            }
+            if ($response->successful() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, is_array($body) ? $body : []);
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
+    private function sendTextViaZavu(string $to, string $text, ?User $user = null): array
+    {
+        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.zavu.api_key');
+        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
+        $phone = '+'.ltrim($to, '+');
+        try {
+            $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders($headers)
+                ->post(rtrim($baseUrl, '/').'/v1/messages', [
+                    'to' => $phone,
+                    'text' => $text,
+                    'channel' => 'whatsapp',
+                ]);
+            $body = $response->json();
+            if ($response->successful() && isset($body['message']['id'])) {
+                return $this->result(true, $body['message']['id'], null, is_array($body) ? $body : []);
+            }
+            if ($response->successful() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, is_array($body) ? $body : []);
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
     private function result(bool $ok, ?string $messageId, ?string $error, array $response = []): array
     {
         return ['ok' => $ok, 'messageId' => $messageId, 'error' => $error, 'response' => $response];
+    }
+
+    /**
+     * Obtiene la configuración de WhatsApp que se usaría para un usuario dado.
+     * Útil para mostrar en el panel qué número se usará para enviar.
+     */
+    public function getUserWhatsAppConfig(?User $user): array
+    {
+        if ($user && ($user->settings['whatsapp_api_key'] ?? null)) {
+            return [
+                'provider' => 'ycloud',
+                'api_key' => $user->settings['whatsapp_api_key'],
+                'phone_number_id' => $user->settings['whatsapp_phone_number_id'] ?? null,
+                'source' => 'user',
+            ];
+        }
+        $provider = $this->provider();
+        return [
+            'provider' => $provider,
+            'api_key' => $provider ? 'configured' : null,
+            'phone_number_id' => null,
+            'source' => 'global',
+        ];
     }
 }

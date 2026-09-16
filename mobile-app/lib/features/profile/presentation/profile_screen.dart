@@ -55,7 +55,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                   SizedBox(height: 8.h),
                   // Mostrar rol solo para administradores
-                  user?.isAdmin == true
+                  user.isAdmin == true
                       ? Container(
                           padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
                           decoration: BoxDecoration(
@@ -63,7 +63,7 @@ class ProfileScreen extends ConsumerWidget {
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            _getRoleLabel(user!.role),
+                            _getRoleLabel(user.role),
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w500,
@@ -101,7 +101,7 @@ class ProfileScreen extends ConsumerWidget {
                       _showAboutDialog(context);
                     },
                   ),
-                  if (user?.isAdmin == true || user?.role == 'supervisor') ...[
+                  if (user.isAdmin == true || user.role == 'supervisor') ...[
                     _MenuItem(
                       icon: Icons.delete,
                       title: 'Eliminar usuario',

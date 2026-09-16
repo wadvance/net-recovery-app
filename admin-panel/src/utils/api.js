@@ -4,6 +4,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 
 const api = axios.create({
   baseURL: API_BASE,
+  // Evita el spinner infinito ("se queda pensando") si el servidor no responde
+  timeout: 20000,
   headers: {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
@@ -23,10 +25,17 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const url = error.config?.url || ''
+    const isAuthRequest = url.includes('/login') || url.includes('/register')
+    // No redirigir al fallar el propio login/registro (mostrar el error en el form)
+    if (error.response?.status === 401 && !isAuthRequest) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')
       window.location.href = `${import.meta.env.BASE_URL}login`
+    }
+    // Sin respuesta del servidor (caído, timeout, red): mensaje claro
+    if (!error.response) {
+      error.isNetworkError = true
     }
     return Promise.reject(error)
   }

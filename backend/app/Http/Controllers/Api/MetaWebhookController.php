@@ -23,6 +23,15 @@ class MetaWebhookController extends Controller
 {
     public function verify(Request $request)
     {
+        @file_put_contents(
+            '/home/vol18_2/ezyro.com/ezyro_42634304/htdocs/webhook_log.txt',
+            date('c') . " VERIFY mode=" . ($_GET['hub_mode'] ?? '') .
+            " token=" . ($_GET['hub_verify_token'] ?? '') .
+            " challenge=" . ($_GET['hub_challenge'] ?? '') .
+            " UA=" . ($_SERVER['HTTP_USER_AGENT'] ?? '') . "\n",
+            FILE_APPEND
+        );
+
         $mode = $request->query('hub_mode');
         $token = $request->query('hub_verify_token');
         $challenge = $request->query('hub_challenge');

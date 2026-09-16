@@ -6,11 +6,15 @@
  *   cookie = hex(AES_CBC_decrypt(c, key=a, iv=b))   (sin padding)
  * donde a, b, c vienen incrustados en la pagina del reto.
  *
- * Este Worker recibe los webhooks de Zavu (o cualquier peticion) y los reenvia
- * al sitio resolviendo el reto y reusando la cookie mientras sea valida.
+ * Este Worker:
+ * 1. Resuelve el reto anti-bot y reenvia peticiones /api/v1/* al origin
+ * 2. Resuelve el webhook de Meta directamente (sin ir al origin)
+ * 3. Sirve la politica de privacidad para Meta App Review
+ * 4. Provee un health check en /api/v1/health
+ * 5. Agrega headers CORS para el admin panel en Firebase
  */
 
-const ORIGIN = 'https://netrecovery.gt.tc';
+const ORIGIN = 'https://netrecovery.unaux.com';
 
 // Cache global por invocacion (Cloudflare Workers mantiene estado en modules)
 const cookieStore = {
@@ -18,8 +22,24 @@ const cookieStore = {
   expiresAt: 0,
 };
 
-async function solveCookie(env) {
-  const url = ORIGIN + '/';
+// CORS headers para el admin panel en Firebase
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, Accept, X-Requested-With',
+  'Access-Control-Max-Age': '86400',
+};
+
+function corsResponse(response) {
+  const newResponse = new Response(response.body, response);
+  for (const [key, value] of Object.entries(CORS_HEADERS)) {
+    newResponse.headers.set(key, value);
+  }
+  newResponse.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  return newResponse;
+}
+
+async function solveCookie(url) {
   const res = await fetch(url, {
     headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NetRecoveryRelay/1.0)' },
     redirect: 'manual',
@@ -37,17 +57,16 @@ async function solveCookie(env) {
   const cookie = bytesToHex(pt);
 
   cookieStore.value = cookie;
-  cookieStore.expiresAt = Date.now() + 5 * 60 * 60 * 1000; // 6h validas, refrescamos antes
+  cookieStore.expiresAt = Date.now() + 5 * 60 * 60 * 1000;
   return cookie;
 }
 
-async function getCookie(env) {
+async function getCookie(url) {
   if (cookieStore.value && Date.now() < cookieStore.expiresAt) {
     return cookieStore.value;
   }
-  return solveCookie(env);
+  return solveCookie(url);
 }
-
 
 /* --- Politica de privacidad (Meta App) --- */
 const PRIVACY_HTML = `<!DOCTYPE html>
@@ -94,43 +113,83 @@ const PRIVACY_HTML = `<!DOCTYPE html>
 <p>Para cualquier consulta sobre esta politica: wadvancetech@gmail.com</p>
 </body>
 </html>`;
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
-    // Política de privacidad pública (para validación de Meta App Review)
-    if (url.pathname === '/privacidad' || url.pathname === '/privacy') {
-      return new Response(PRIVACY_HTML, {
-        status: 200,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-      });
+    // Handle CORS preflight
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
 
-    // Verificación de webhook de Meta resuelta EN el worker (evita caché
+    // Politica de privacidad publica (para validacion de Meta App Review)
+    if (url.pathname === '/privacidad' || url.pathname === '/privacy') {
+      return corsResponse(new Response(PRIVACY_HTML, {
+        status: 200,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      }));
+    }
+
+    // Health check - verifica que el backend este operativo
+    if (url.pathname === '/api/v1/health') {
+      try {
+        const cookie = await getCookie(ORIGIN + '/api/v1/health');
+        const healthRes = await fetch(ORIGIN + '/api/v1/health', {
+          headers: {
+            'Cookie': '__test=' + cookie,
+            'User-Agent': 'Mozilla/5.0 (compatible; NetRecoveryRelay/1.0)',
+          },
+        });
+        const body = await healthRes.text();
+        return corsResponse(new Response(body, {
+          status: healthRes.status,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      } catch (e) {
+        return corsResponse(new Response(JSON.stringify({
+          status: 'error',
+          message: 'Backend no disponible: ' + e.message,
+        }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+    }
+
+    // Verificacion de webhook de Meta resuelta EN el worker (evita cache
     // desactualizada del hosting gratuito en el GET de hub_challenge).
     if (url.pathname === '/api/v1/whatsapp/meta/webhook' && request.method === 'GET') {
       const mode = url.searchParams.get('hub_mode');
       const token = url.searchParams.get('hub_verify_token');
       const challenge = url.searchParams.get('hub_challenge');
       if (mode === 'subscribe' && token === 'netrecovery2026') {
-        return new Response(challenge || '', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+        return corsResponse(new Response(challenge || '', {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain' },
+        }));
       }
-      return new Response('Forbidden', { status: 403 });
+      return corsResponse(new Response('Forbidden', { status: 403 }));
     }
 
-    // Solo reenviamos peticiones hacia nuestra raiz (patron /api/v1/...)
+    // Solo reenviamos peticiones hacia /api/v1/...
     if (!url.pathname.startsWith('/api/v1')) {
-      return new Response('OK', { status: 200 });
+      return corsResponse(new Response(JSON.stringify({ error: 'Ruta no encontrada' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      }));
     }
 
     let cookie;
     try {
-      cookie = await getCookie(env);
+      cookie = await getCookie(ORIGIN + url.pathname + url.search);
     } catch (e) {
-      return new Response(JSON.stringify({ error: 'No se pudo resolver el reto anti-bot: ' + e.message }), {
+      return corsResponse(new Response(JSON.stringify({
+        error: 'No se pudo resolver el reto anti-bot: ' + e.message,
+      }), {
         status: 502,
         headers: { 'Content-Type': 'application/json' },
-      });
+      }));
     }
 
     const target = ORIGIN + url.pathname + url.search;
@@ -148,28 +207,69 @@ export default {
     headers.delete('x-forwarded-host');
     headers.delete('x-real-ip');
 
-    let upstream = await fetch(target, {
-      method: request.method,
-      headers,
-      body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
-      redirect: 'manual',
-    });
+    let upstream;
+    try {
+      upstream = await fetch(target, {
+        method: request.method,
+        headers,
+        body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
+        redirect: 'manual',
+      });
+    } catch (e) {
+      return corsResponse(new Response(JSON.stringify({
+        error: 'Error conectando al backend: ' + e.message,
+      }), {
+        status: 502,
+        headers: { 'Content-Type': 'application/json' },
+      }));
+    }
 
-    // Si el origin vuelve a servir el reto (cookie rechazada o vencida), resolvemos
-    // una cookie nueva y reintentamos una vez.
+    // Si el origin vuelve a servir el reto, resolvemos la cookie y
+    // seguimos la cadena de redirect como un navegador.
     const ct = upstream.headers.get('content-type') || '';
-    if (ct.includes('text/html') && upstream.status === 200) {
+    if (upstream.status === 200 && ct.includes('text/html')) {
       const bodyText = await upstream.clone().text();
       if (bodyText.includes('aes.js') || bodyText.includes('slowAES')) {
         cookieStore.value = null;
-        cookie = await solveCookie(env);
-        headers.set('Cookie', '__test=' + cookie);
-        upstream = await fetch(target, {
-          method: request.method,
-          headers,
-          body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
-          redirect: 'manual',
-        });
+        try {
+          cookie = await solveCookie(target);
+          headers.set('Cookie', '__test=' + cookie);
+          // Seguir el redirect de la cadena anti-bot
+          const rm = bodyText.match(/location\.href="([^"]+)"/);
+          const redirectUrl = rm ? rm[1] : target;
+          upstream = await fetch(redirectUrl, {
+            method: request.method,
+            headers,
+            body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
+            redirect: 'manual',
+          });
+        } catch (e) {
+          return corsResponse(new Response(JSON.stringify({
+            error: 'Re-challenge fallido: ' + e.message,
+          }), {
+            status: 502,
+            headers: { 'Content-Type': 'application/json' },
+          }));
+        }
+      }
+    }
+
+    // Si retorna 500 con cuerpo vacio, reintentar con cookie fresca
+    const ct2 = upstream.headers.get('content-type') || '';
+    if (upstream.status === 500) {
+      const bodyText = await upstream.clone().text();
+      if (bodyText.length === 0) {
+        cookieStore.value = null;
+        try {
+          cookie = await solveCookie(target);
+          headers.set('Cookie', '__test=' + cookie);
+          upstream = await fetch(target, {
+            method: request.method,
+            headers,
+            body: ['GET', 'HEAD'].includes(request.method) ? undefined : await request.arrayBuffer(),
+            redirect: 'manual',
+          });
+        } catch (e) { /* ignorar */ }
       }
     }
 
@@ -177,6 +277,12 @@ export default {
     const respHeaders = new Headers(upstream.headers);
     respHeaders.delete('set-cookie');
     respHeaders.delete('location');
+
+    // Agregar CORS y no-cache a la respuesta
+    for (const [key, value] of Object.entries(CORS_HEADERS)) {
+      respHeaders.set(key, value);
+    }
+    respHeaders.set('Cache-Control', 'no-store, no-cache, must-revalidate');
 
     return new Response(respBody, {
       status: upstream.status,
@@ -195,7 +301,7 @@ function hexToBytes(hex) {
 
 function bytesToHex(bytes) {
   let s = '';
-  for (let i = 0; i < bytes.length; i++) s += bytes[i].toString(16).padStart(2, '0');
+  for (let i = bytes.length - 1; i >= 0; i--) s += bytes[i].toString(16).padStart(2, '0');
   return s;
 }
 

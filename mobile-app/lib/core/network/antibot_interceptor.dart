@@ -8,8 +8,11 @@ class AntiBotSolver {
   final SecureStorage storage;
   AntiBotSolver(this.storage);
 
+  // ignore: unused_field
   static const _cookieKey = 'antibot_test_cookie';
+  // ignore: unused_field
   static const _tsKey = 'antibot_test_ts';
+  // ignore: unused_field
   static const _lifetime = Duration(hours: 5);
 
   static bool isChallenge(String body) {
@@ -37,7 +40,9 @@ class AntiBotSolver {
 
   static String _toHex(Uint8List b) {
     final sb = StringBuffer();
-    for (final v in b) sb.write(v.toRadixString(16).padLeft(2, '0'));
+    for (final v in b) {
+      sb.write(v.toRadixString(16).padLeft(2, '0'));
+    }
     return sb.toString();
   }
 

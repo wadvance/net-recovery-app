@@ -101,7 +101,7 @@ class ExcelImportController extends Controller
     {
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-            'company_id' => 'required|exists:companies,id',
+            'company_id' => 'nullable|exists:companies,id',
             'scheduled_date' => 'nullable|date',
         ]);
 

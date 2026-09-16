@@ -17,7 +17,7 @@ class WhatsAppController extends Controller
      * proveedor de WhatsApp configurado (Twilio > Zavu > Meta). Reutilizado por
      * sendToClient, sendForTask y sendBulk.
      */
-    protected function dispatchMessage(WhatsAppMessage $message, Client $client, Company $company, string $templateName): WhatsAppMessage
+    protected function dispatchMessage(WhatsAppMessage $message, Client $client, Company $company, ?string $templateName): WhatsAppMessage
     {
         $result = (new WhatsAppService())->sendToClient($client, $company, $templateName);
         if ($result['ok']) {
@@ -34,7 +34,7 @@ class WhatsAppController extends Controller
             'company_id' => 'required|exists:companies,id',
             'client_ids' => 'required|array|min:1',
             'client_ids.*' => 'exists:clients,id',
-            'template_name' => 'required|string',
+            'template_name' => 'nullable|string',
         ]);
 
         $company = Company::find($request->company_id);
@@ -92,7 +92,7 @@ class WhatsAppController extends Controller
     {
         $request->validate([
             'client_id' => 'required|exists:clients,id',
-            'template_name' => 'required|string',
+            'template_name' => 'nullable|string',
             'task_id' => 'nullable|exists:tasks,id',
         ]);
 

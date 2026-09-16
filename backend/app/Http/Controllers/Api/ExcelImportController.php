@@ -99,6 +99,7 @@ class ExcelImportController extends Controller
 
     public function import(Request $request)
     {
+        \Log::info('import start', ['files' => array_keys($request->allFiles()), 'all' => array_keys($request->all())]);
         $request->validate([
             'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
             'company_id' => 'nullable|exists:companies,id',

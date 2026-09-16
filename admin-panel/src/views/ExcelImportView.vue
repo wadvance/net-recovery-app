@@ -940,14 +940,7 @@ function resetImport() {
 }
 
 async function clearAllData() {
-  const ok = confirm(
-    "¿Eliminar TODOS los clientes, tareas, reportes e historial de importaciones?\n\nEsta acción no se puede deshacer.",
-  );
-  if (!ok) return;
-  const ok2 = confirm(
-    "Confirmación final: se borrará toda la data subida para cargar el Excel nuevo. ¿Continuar?",
-  );
-  if (!ok2) return;
+  if (!confirm("¿Eliminar TODOS los clientes, tareas, reportes e historial?\nEsta acción no se puede deshacer. ¿Continuar?")) return;
   try {
     await excelApi.clearAll();
     importData.value = null;
@@ -955,7 +948,8 @@ async function clearAllData() {
     await fetchImports();
     alert("Base de datos limpiada correctamente");
   } catch (e) {
-    alert("Error al limpiar: " + (e.response?.data?.message || e.message));
+    console.error(e);
+    alert("Error al limpiar: " + (e.response?.data?.message || e.response?.data?.error || e.message));
   }
 }
 

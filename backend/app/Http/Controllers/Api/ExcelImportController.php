@@ -334,6 +334,7 @@ class ExcelImportController extends Controller
 
                     if (!empty($usuario)) {
                         $assignedUser = $this->findUserByName($usuario);
+                        if (!$assignedUser) $assignedUser = User::where('is_active', true)->where('role', 'agent')->first();
                         if ($assignedUser) {
                             $task->update([
                                 'assigned_to' => $assignedUser->id,
@@ -350,6 +351,11 @@ class ExcelImportController extends Controller
                         } else {
                             $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (tarea creada sin asignar)";
                         }
+                    } else {
+                        $fallback = User::where('is_active', true)->where('role', 'agent')->first() ?? $request->user();
+                        $task->update(['assigned_to' => $fallback->id, 'status' => 'assigned', 'scheduled_date' => $request->scheduled_date]);
+                        $client->update(['status' => 'assigned']);
+                        TaskAssignment::create(['task_id' => $task->id, 'user_id' => $fallback->id, 'assigned_by' => $request->user()->id, 'assignment_type' => 'import']);
                     }
 
                     // Protección anti-repetición: SOLO 1 mensaje por cliente/teléfono.

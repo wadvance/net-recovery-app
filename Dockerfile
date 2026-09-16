@@ -1,59 +1,31 @@
-# Stage 1: Build frontend
-FROM node:20-bookworm AS frontend
-WORKDIR /app
-COPY admin-panel/package*.json ./
-RUN npm ci
-COPY admin-panel/ ./
-RUN npm run build
+FROM php:8.3-cli
 
-# Stage 2: PHP 8.3 + Nginx
-FROM php:8.3-fpm-bookworm
-
-# Install system deps (including build tools for extensions)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    nginx \
-    libzip-dev \
+RUN apt-get update && apt-get install -y \
     libpng-dev \
-    libjpeg-dev \
-    libfreetype6-dev \
     libonig-dev \
     libxml2-dev \
-    libsqlite3-dev \
+    zip \
     unzip \
-    curl \
     git \
-    gettext-base \
+    curl \
+    && docker-php-ext-install pdo pdo_sqlite mbstring exif pcntl \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-        bcmath gd zip pcntl \
-    && apt-get clean \
+    && docker-php-ext-install gd \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
     && rm -rf /var/lib/apt/lists/*
 
-# Composer
-COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+WORKDIR /app
 
-# Nginx config
-COPY docker/nginx.conf /etc/nginx/sites-enabled/default.conf
-RUN rm -f /etc/nginx/sites-enabled/default
+COPY backend/composer.json backend/composer.lock ./
+RUN composer install --no-interaction --optimize-autoloader --no-dev
 
-# Deploy script
-COPY docker/deploy.sh /usr/local/bin/deploy.sh
-RUN chmod +x /usr/local/bin/deploy.sh
+COPY backend/ .
 
-WORKDIR /var/www/html
+RUN cp .env.example .env && \
+    php artisan config:clear && \
+    php artisan key:generate --ansi && \
+    php artisan migrate --force
 
-# Backend code
-COPY backend ./
+EXPOSE 8000
 
-# Frontend build
-COPY --from=frontend /app/public/admin ./public/admin
-
-# Install PHP deps
-RUN composer install --no-dev --optimize-autoloader --no-interaction
-
-# Permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
-
-EXPOSE 8080
-CMD ["/usr/local/bin/deploy.sh"]
+CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]

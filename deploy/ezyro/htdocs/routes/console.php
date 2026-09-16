@@ -4,10 +4,18 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Console\Commands\GeneratePerformanceReports;
+use App\Console\Commands\CleanupDailyExcelImports;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+// Limpieza diaria de archivos Excel subidos: 8:00 pm hora Guatemala.
+// Deja la lista vacía para que cada agente suba su archivo al día siguiente.
+Schedule::command(CleanupDailyExcelImports::class)
+    ->dailyAt('20:00')
+    ->timezone(CleanupDailyExcelImports::BUSINESS_TZ)
+    ->withoutOverlapping();
 
 // Reportes de desempeño programados:
 //  - fin de día (diario)

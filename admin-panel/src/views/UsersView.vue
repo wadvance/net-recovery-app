@@ -66,6 +66,9 @@
               Estado
             </th>
             <th class="pb-3 font-medium">
+              WhatsApp
+            </th>
+            <th class="pb-3 font-medium">
               Acciones
             </th>
           </tr>
@@ -97,6 +100,22 @@
               </span>
             </td>
             <td class="py-3">
+              <span
+                v-if="user.settings?.whatsapp_api_key"
+                class="badge bg-green-100 text-green-700"
+                title="WhatsApp configurado"
+              >
+                📱 WA
+              </span>
+              <span
+                v-else
+                class="badge bg-gray-100 text-gray-500"
+                title="Sin WhatsApp propio"
+              >
+                —
+              </span>
+            </td>
+            <td class="py-3">
               <button
                 class="text-sm text-gray-500 hover:text-primary-500 mr-3"
                 @click="toggleStatus(user)"
@@ -122,6 +141,13 @@
                 @click="confirmDelete(user)"
               >
                 Eliminar
+              </button>
+              <button
+                class="text-sm text-green-600 hover:text-green-700 ml-3"
+                :disabled="waSendingId === user.id"
+                @click="sendWhatsappBulk(user)"
+              >
+                {{ waSendingId === user.id ? 'Enviando...' : 'WhatsApp masivo' }}
               </button>
             </td>
           </tr>
@@ -251,6 +277,40 @@
               >
                 Generar contraseña
               </button>
+            </div>
+          </div>
+
+          <!-- WhatsApp Configuration -->
+          <div class="border-t border-gray-200 pt-4 mt-4">
+            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+              <span class="text-green-600">📱</span> Configuración WhatsApp (YCloud)
+            </h4>
+            <div class="space-y-3">
+              <div>
+                <label class="label">API Key de YCloud</label>
+                <input
+                  v-model="form.whatsapp_api_key"
+                  type="password"
+                  autocomplete="off"
+                  class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
+                  placeholder="ycloud_api_key_..."
+                >
+                <p class="text-xs text-gray-400 mt-1">
+                  Cada usuario puede tener su propia API key de YCloud
+                </p>
+              </div>
+              <div>
+                <label class="label">Phone Number ID</label>
+                <input
+                  v-model="form.whatsapp_phone_number_id"
+                  autocomplete="off"
+                  class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
+                  placeholder="123456789012345"
+                >
+                <p class="text-xs text-gray-400 mt-1">
+                  ID del número de teléfono en YCloud/Meta
+                </p>
+              </div>
             </div>
           </div>
           <div class="flex gap-3 pt-2">
@@ -384,12 +444,13 @@ const search = ref('')
 const roleFilter = ref('')
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', email: '', phone: '', role: '', password: '' })
+const form = ref({ name: '', email: '', phone: '', role: '', password: '', whatsapp_api_key: '', whatsapp_phone_number_id: '' })
 const showResetModal = ref(false)
 const resetUser = ref(null)
 const resetPasswordForm = ref('')
 const showPassword = ref(false)
 const showResetPassword = ref(false)
+const waSendingId = ref(null)
 
 onMounted(fetchUsers)
 
@@ -422,8 +483,16 @@ async function fetchUsers() {
 function openModal(user = null) {
   editing.value = user
   form.value = user
-    ? { name: user.name, email: user.email, phone: user.phone, role: user.role, password: '' }
-    : { name: '', email: '', phone: '', role: '', password: '' }
+    ? {
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        password: '',
+        whatsapp_api_key: user.settings?.whatsapp_api_key || '',
+        whatsapp_phone_number_id: user.settings?.whatsapp_phone_number_id || '',
+      }
+    : { name: '', email: '', phone: '', role: '', password: '', whatsapp_api_key: '', whatsapp_phone_number_id: '' }
   showModal.value = true
 }
 
@@ -455,6 +524,16 @@ async function resetPassword() {
   } catch (e) {
     alert(e.response?.data?.message || 'Error al restablecer la contraseña')
   }
+}
+
+async function sendWhatsappBulk(user) {
+  if (!confirm(`Enviar WhatsApp masivo a los clientes asignados a "${user.name}"?`)) return
+  waSendingId.value = user.id
+  try {
+    const res = await usersApi.whatsappBulk(user.id, { template_name: 'equipment_recovery_notification' })
+    alert(res.data.message || `Enviados: ${res.data.created}, omitidos: ${res.data.skipped}`)
+  } catch (e) { alert(e.response?.data?.message || 'Error al enviar') }
+  finally { waSendingId.value = null }
 }
 
 async function confirmDelete(user) {

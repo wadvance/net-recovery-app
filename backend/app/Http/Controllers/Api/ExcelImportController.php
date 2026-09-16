@@ -332,24 +332,30 @@ class ExcelImportController extends Controller
                         'scheduled_date' => $request->scheduled_date,
                     ]);
 
+                    $assignedUser = null;
                     if (!empty($usuario)) {
                         $assignedUser = $this->findUserByName($usuario);
-                        if ($assignedUser) {
-                            $task->update([
-                                'assigned_to' => $assignedUser->id,
-                                'status' => 'assigned',
-                                'scheduled_date' => $request->scheduled_date,
-                            ]);
-                            $client->update(['status' => 'assigned']);
-                            TaskAssignment::create([
-                                'task_id' => $task->id,
-                                'user_id' => $assignedUser->id,
-                                'assigned_by' => $request->user()->id,
-                                'assignment_type' => 'import',
-                            ]);
-                        } else {
-                            $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (tarea creada sin asignar)";
+                        if (!$assignedUser) {
+                            $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (se asigna al que sube el archivo)";
                         }
+                    }
+                    // Fallback: si no hay USUARIO en el Excel o no se encontró, asignar al usuario que sube el archivo
+                    if (!$assignedUser) {
+                        $assignedUser = $request->user();
+                    }
+                    if ($assignedUser) {
+                        $task->update([
+                            'assigned_to' => $assignedUser->id,
+                            'status' => 'assigned',
+                            'scheduled_date' => $request->scheduled_date,
+                        ]);
+                        $client->update(['status' => 'assigned']);
+                        TaskAssignment::create([
+                            'task_id' => $task->id,
+                            'user_id' => $assignedUser->id,
+                            'assigned_by' => $request->user()->id,
+                            'assignment_type' => 'import',
+                        ]);
                     }
 
                     // Protección anti-repetición: SOLO 1 mensaje por cliente/teléfono.
@@ -420,16 +426,18 @@ class ExcelImportController extends Controller
             // Línea del agente si la tiene; si no, la central (fallback en servicio)
             $latestTask = $item['client']->tasks()->latest('updated_at')->first();
             $senderId = null;
+            $agent = null;
             if ($latestTask?->assigned_to) {
                 $agent = \App\Models\User::find($latestTask->assigned_to);
-                $senderId = $agent?->whatsappSenderId();
+                $senderId = $agent?->settings['whatsapp_sender_id'] ?? null;
             }
 
             $result = $whatsapp->sendToClient(
                 $item['client'],
                 $companiesById[$companyId],
                 'equipment_recovery_notification',
-                $senderId
+                $senderId,
+                $agent
             );
             if ($result['ok']) {
                 $notified++;

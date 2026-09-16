@@ -6,6 +6,19 @@ $backend = Join-Path $root "backend"
 $staging = Join-Path $root "deploy\ezyro\htdocs"
 $domain = "netrecovery.unaux.com"
 
+# Load secrets from .env.secrets (not committed to git)
+$secretsFile = Join-Path $PSScriptRoot "ezyro\.env.secrets"
+if (-not (Test-Path $secretsFile)) {
+    Write-Error "Secrets file not found: $secretsFile`nCopy .env.secrets.example to .env.secrets and fill in the values."
+    exit 1
+}
+$secrets = @{}
+Get-Content $secretsFile | ForEach-Object {
+    if ($_ -match '^([^#=]+)=(.*)$') {
+        $secrets[$matches[1].Trim()] = $matches[2].Trim()
+    }
+}
+
 # Clean staging
 if (Test-Path $staging) { Remove-Item -Recurse -Force $staging }
 New-Item -ItemType Directory -Force -Path $staging | Out-Null
@@ -26,7 +39,7 @@ robocopy (Join-Path $backend "public") $staging /E /XD storage > $null
 $envContent = @"
 APP_NAME="NET RECOVERY"
 APP_ENV=production
-APP_KEY=base64:Gya0/U7CTc8D9jwKA536jyaclCn0xJJXMJuF/8GCjOw=
+APP_KEY=$($secrets['APP_KEY'])
 APP_DEBUG=false
 APP_URL=https://${domain}
 APP_LOCALE=es
@@ -43,15 +56,15 @@ SESSION_LIFETIME=120
 CACHE_STORE=database
 QUEUE_CONNECTION=sync
 
-FRONTEND_URL=https://${domain}
+FRONTEND_URL=https://net-recovery-app.web.app
 
-ZAVU_API_KEY=zv_live_3892d8aec663831de302a709b2841ca184871cb9e22e434a
-ZAVU_BASE_URL=https://api.zavu.dev
-ZAVU_SENDER=kd7eyphnd8t74e2mf9g2jqw2th8c7khm
-ZAVU_TEMPLATE_ID=ks71hmj5vr9b0a68r5vs3k92y18c6smf
+ZAVU_API_KEY=$($secrets['ZAVU_API_KEY'])
+ZAVU_BASE_URL=$($secrets['ZAVU_BASE_URL'])
+ZAVU_SENDER=$($secrets['ZAVU_SENDER'])
+ZAVU_TEMPLATE_ID=$($secrets['ZAVU_TEMPLATE_ID'])
 
-WHATSAPP_VERSION=v21.0
-WHATSAPP_BASE_URL=https://graph.facebook.com
+WHATSAPP_VERSION=$($secrets['WHATSAPP_VERSION'])
+WHATSAPP_BASE_URL=$($secrets['WHATSAPP_BASE_URL'])
 "@
 Set-Content -Path (Join-Path $staging ".env") -Value $envContent -Encoding ascii
 

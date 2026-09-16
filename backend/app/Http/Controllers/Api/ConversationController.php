@@ -81,7 +81,7 @@ class ConversationController extends Controller
             'status' => 'pending',
         ]);
 
-        $result = (new WhatsAppService())->sendTextReply($conversation->phone, $request->message);
+        $result = (new WhatsAppService())->sendTextReply($conversation->phone, $request->message, null, $request->user());
 
         if ($result['ok']) {
             $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);

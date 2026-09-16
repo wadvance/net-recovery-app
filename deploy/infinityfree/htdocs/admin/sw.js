@@ -1,4 +1,4 @@
-const CACHE_NAME = 'recovery-admin-v2'
+const CACHE_NAME = 'recovery-admin-v3'
 const PRECACHE_URLS = [
   './',
   './index.html',

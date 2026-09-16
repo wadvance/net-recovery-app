@@ -164,10 +164,10 @@
                 <div class="flex items-center gap-3">
                   <div class="w-8 h-8 bg-primary-100 dark:bg-primary-900/30 rounded-full flex items-center justify-center">
                     <span class="text-xs font-medium text-primary-600 dark:text-primary-400">
-                      {{ agent.name.split(' ').map(n => n[0]).join('') }}
+                      {{ (agent.name || '?').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) }}
                     </span>
                   </div>
-                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ agent.name }}</span>
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ agent.name || agent.email || 'Sin nombre' }}</span>
                 </div>
               </td>
               <td class="py-3 text-center text-sm text-gray-600 dark:text-gray-400">
@@ -226,7 +226,8 @@ async function fetchStats() {
 async function fetchAgentPerformance() {
   try {
     const response = await dashboardApi.agentPerformance({ period: 'week' })
-    agents.value = response.data
+    const data = response.data
+    agents.value = Array.isArray(data) ? data : (data?.data || [])
   } catch (error) {
     console.error('Error fetching agent performance:', error)
   }

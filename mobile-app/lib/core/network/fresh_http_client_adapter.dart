@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
-import 'package:dio/dio.dart' show HttpClientAdapter;
 
 /// Adapter HTTP para móvil que crea un [HttpClient] nuevo por petición y lo
 /// cierra al terminar (`persistentConnection = false`).
@@ -92,9 +91,9 @@ class FreshAdapter implements HttpClientAdapter {
     final headers = <String, List<String>>{};
     responseStream.headers.forEach((key, values) => headers[key] = values);
 
-    String? httpVersion;
+    // httpVersion probed but not needed currently; keep try for future use
     try {
-      httpVersion = (responseStream.headers as dynamic).protocolVersion as String?;
+      (responseStream.headers as dynamic).protocolVersion;
     } catch (_) {}
 
     return ResponseBody(

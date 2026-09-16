@@ -270,7 +270,7 @@
             </p>
           </div>
 
-          <div class="space-y-3">
+          <div v-if="false" class="space-y-3">
             <div>
               <label class="label">Nombre del Cliente *</label>
               <select

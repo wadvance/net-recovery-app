@@ -45,8 +45,13 @@ class Aes128 {
 
   static Uint8List _keyExpansion(Uint8List key) {
     final w = List<int>.filled(176, 0);
-    for (var i = 0; i < 16; i++) w[i] = key[i];
-    var Nk = 4, Nr = 10;
+    for (var i = 0; i < 16; i++) {
+      w[i] = key[i];
+    }
+    // ignore: non_constant_identifier_names
+    var Nk = 4;
+    // ignore: non_constant_identifier_names
+    var Nr = 10;
     for (var i = Nk; i < 4 * (Nr + 1); i++) {
       var temp = Uint8List(4);
       temp[0] = w[4 * (i - 1) + 0];
@@ -81,14 +86,18 @@ class Aes128 {
 
   static void _invSubBytes(List<List<int>> s) {
     for (var r = 0; r < 4; r++) {
-      for (var c = 0; c < 4; c++) s[r][c] = _invSBox[s[r][c]];
+      for (var c = 0; c < 4; c++) {
+        s[r][c] = _invSBox[s[r][c]];
+      }
     }
   }
 
   static void _invShiftRows(List<List<int>> s) {
     for (var r = 1; r < 4; r++) {
       final row = List<int>.from(s[r]);
-      for (var c = 0; c < 4; c++) s[r][c] = row[(c - r + 4) % 4];
+      for (var c = 0; c < 4; c++) {
+        s[r][c] = row[(c - r + 4) % 4];
+      }
     }
   }
 
@@ -120,10 +129,13 @@ class Aes128 {
 
   static Uint8List decryptBlock(Uint8List key, Uint8List block) {
     final w = _keyExpansion(key);
+    // ignore: constant_identifier_names
     const Nr = 10;
     final state = List.generate(4, (_) => List<int>.filled(4, 0));
     for (var c = 0; c < 4; c++) {
-      for (var r = 0; r < 4; r++) state[r][c] = block[c * 4 + r];
+      for (var r = 0; r < 4; r++) {
+        state[r][c] = block[c * 4 + r];
+      }
     }
     _addRoundKey(state, w, Nr);
     for (var rnd = Nr - 1; rnd >= 1; rnd--) {
@@ -137,7 +149,9 @@ class Aes128 {
     _addRoundKey(state, w, 0);
     final out = Uint8List(16);
     for (var c = 0; c < 4; c++) {
-      for (var r = 0; r < 4; r++) out[c * 4 + r] = state[r][c];
+      for (var r = 0; r < 4; r++) {
+        out[c * 4 + r] = state[r][c];
+      }
     }
     return out;
   }
@@ -150,7 +164,9 @@ class Aes128 {
     for (var off = 0; off < ct.length; off += 16) {
       final block = ct.sublist(off, off + 16);
       final dec = decryptBlock(key, block);
-      for (var i = 0; i < 16; i++) out[off + i] = dec[i] ^ prev[i];
+      for (var i = 0; i < 16; i++) {
+        out[off + i] = dec[i] ^ prev[i];
+      }
       prev = Uint8List.fromList(block);
     }
     return out;

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:dio/dio.dart';
@@ -9,12 +8,16 @@ String? solve(String html) {
   if (m == null) return null;
   Uint8List hx(String s) {
     final out = <int>[];
-    for (var i = 0; i + 1 < s.length; i += 2) out.add(int.parse(s.substring(i, i + 2), radix: 16));
+    for (var i = 0; i + 1 < s.length; i += 2) {
+      out.add(int.parse(s.substring(i, i + 2), radix: 16));
+    }
     return Uint8List.fromList(out);
   }
   final pt = Aes128.cbcDecrypt(hx(m[1]!), hx(m[2]!), hx(m[3]!));
   final sb = StringBuffer();
-  for (final b in pt) sb.write(b.toRadixString(16).padLeft(2, '0'));
+  for (final b in pt) {
+    sb.write(b.toRadixString(16).padLeft(2, '0'));
+  }
   return sb.toString();
 }
 

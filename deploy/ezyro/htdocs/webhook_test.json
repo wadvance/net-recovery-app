@@ -1,0 +1,1 @@
+{"id":"evt_test_fail","type":"message.failed","timestamp":1787189352532,"data":{"messageId":"msg_test_001","error":"Numero no disponible"}}

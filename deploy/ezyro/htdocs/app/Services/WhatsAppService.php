@@ -8,13 +8,13 @@ use Illuminate\Support\Facades\Http;
 
 /**
  * Envio de notificaciones al cliente a traves del proveedor configurado
- * (Twilio, con fallback a Zavu, Meta Graph API o texto libre).
+ * (Meta Graph API con fallback a Twilio).
  * Centraliza la logica para que tanto WhatsAppController como el
  * procesador de Excel puedan reutilizarla.
  */
 class WhatsAppService
 {
-    public function sendToClient(Client $client, Company $company, ?string $templateName = null): array
+    public function sendToClient(Client $client, Company $company, ?string $templateName = null, ?string $senderId = null): array
     {
         $to = '+' . $client->formatted_phone;
         if (!$to || $to === '+') {
@@ -26,6 +26,14 @@ class WhatsAppService
             return $this->result(false, null, 'WhatsApp API no configurada');
         }
 
+        if ($provider === 'zavu') {
+            return $this->sendViaZavu($to, $client, $company, $templateName);
+        }
+
+        if ($provider === 'ycloud') {
+            return $this->sendViaYCloud($to, $client, $company, $templateName);
+        }
+
         if ($provider === 'meta') {
             return $this->sendViaMeta($to, $client, $company, $templateName);
         }
@@ -34,11 +42,51 @@ class WhatsAppService
             return $this->sendViaTwilio($to, $client, $company, $templateName);
         }
 
-        if ($provider === 'zavu') {
-            return $this->sendViaZavu($to, $client, $company, $templateName);
-        }
-
         return $this->result(false, null, 'WhatsApp API no configurada');
+    }
+
+    private function sendViaYCloud(string $to, Client $client, Company $company, ?string $templateName): array
+    {
+        $apiKey = config('services.ycloud.api_key');
+        $phoneNumberId = config('services.ycloud.phone_number_id');
+        if (!$apiKey || !$phoneNumberId) {
+            return $this->result(false, null, 'YCloud no configurado');
+        }
+        $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
+        // YCloud usa endpoint compatible con Meta: POST {base}/v1/{phoneId}/messages con header X-API-Key
+        $params = $this->buildParams($client, $company);
+        $payload = [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $client->formatted_phone,
+            'type' => $templateName ? 'template' : 'text',
+        ];
+        if ($templateName) {
+            $payload['template'] = [
+                'name' => $templateName,
+                'language' => ['code' => 'es'],
+                'components' => [[
+                    'type' => 'body',
+                    'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
+                ]],
+            ];
+        } else {
+            $payload['text'] = ['body' => $this->fallbackText($client, $company)];
+        }
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
+                ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", $payload);
+            $body = $response->json();
+            if ($response->ok() && isset($body['messages'][0]['id'])) {
+                return $this->result(true, $body['messages'][0]['id'], null, $body);
+            }
+            $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
     }
 
     private function sendViaMeta(string $to, Client $client, Company $company, ?string $templateName): array
@@ -84,10 +132,11 @@ class WhatsAppService
             if ($response->ok() && isset($body['messages'][0]['id'])) {
                 return $this->result(true, $body['messages'][0]['id'], null, $body);
             }
-            $error = is_array($body)
-                ? ($body['error']['message'] ?? ($body['message'] ?? json_encode($body)))
+            $rawError = is_array($body)
+                ? ($body['error']['message'] ?? ($body['message'] ?? $body))
                 : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
         } catch (\Throwable $e) {
             return $this->result(false, null, $e->getMessage(), []);
         }
@@ -132,62 +181,11 @@ class WhatsAppService
             if ($response->successful() && isset($body['sid'])) {
                 return $this->result(true, $body['sid'], null, $body);
             }
-            $error = is_array($body)
-                ? ($body['message'] ?? ($body['error_message'] ?? json_encode($body)))
+            $rawError = is_array($body)
+                ? ($body['message'] ?? ($body['error_message'] ?? $body))
                 : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
-        } catch (\Throwable $e) {
-            return $this->result(false, null, $e->getMessage(), []);
-        }
-    }
-
-    private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName): array
-    {
-        $key = config('services.zavu.key');
-        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
-
-        $request = Http::withToken($key)->baseUrl($baseUrl)->timeout(30);
-
-        $headers = ['Content-Type' => 'application/json'];
-        if (config('services.zavu.sender')) {
-            $headers['Zavu-Sender'] = config('services.zavu.sender');
-        }
-
-        $templateId = $templateName ? config("services.whatsapp_templates.{$templateName}") : null;
-
-        if ($templateId) {
-            $params = $this->buildParams($client, $company);
-            $vars = [];
-            foreach (array_values($params) as $i => $v) {
-                $vars[(string) ($i + 1)] = (string) $v;
-            }
-            $payload = [
-                'to' => $to,
-                'messageType' => 'template',
-                'content' => [
-                    'templateId' => $templateId,
-                    'templateVariables' => $vars,
-                ],
-            ];
-        } else {
-            $payload = [
-                'to' => $to,
-                'channel' => 'whatsapp',
-                'messageType' => 'text',
-                'text' => $this->fallbackText($client, $company),
-            ];
-        }
-
-        try {
-            $response = $request->withHeaders($headers)->post('/v1/messages', $payload);
-            $body = $response->json();
-            if ($response->successful() && isset($body['message']['id'])) {
-                return $this->result(true, $body['message']['id'], null, $body);
-            }
-            $error = is_array($body)
-                ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
-                : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
         } catch (\Throwable $e) {
             return $this->result(false, null, $e->getMessage(), []);
         }
@@ -213,45 +211,15 @@ class WhatsAppService
             return $this->sendTextViaTwilio($to, $text);
         }
 
+        if ($provider === 'ycloud') {
+            return $this->sendTextViaYCloud($to, $text);
+        }
+
         if ($provider === 'meta') {
             return $this->sendTextViaMeta($to, $text);
         }
 
         return $this->result(false, null, 'WhatsApp API no configurada');
-    }
-
-    private function sendTextViaZavu(string $to, string $text): array
-    {
-        $key = config('services.zavu.key');
-        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
-
-        $request = Http::withToken($key)->baseUrl($baseUrl)->timeout(30);
-
-        $headers = ['Content-Type' => 'application/json'];
-        if (config('services.zavu.sender')) {
-            $headers['Zavu-Sender'] = config('services.zavu.sender');
-        }
-
-        $payload = [
-            'to' => $to,
-            'channel' => 'whatsapp',
-            'messageType' => 'text',
-            'text' => $text,
-        ];
-
-        try {
-            $response = $request->withHeaders($headers)->post('/v1/messages', $payload);
-            $body = $response->json();
-            if ($response->successful() && isset($body['message']['id'])) {
-                return $this->result(true, $body['message']['id'], null, $body);
-            }
-            $error = is_array($body)
-                ? ($body['message'] ?? ($body['error'] ?? json_encode($body)))
-                : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
-        } catch (\Throwable $e) {
-            return $this->result(false, null, $e->getMessage(), []);
-        }
     }
 
     private function sendTextViaTwilio(string $to, string $text): array
@@ -279,10 +247,41 @@ class WhatsAppService
             if ($response->successful() && isset($body['sid'])) {
                 return $this->result(true, $body['sid'], null, $body);
             }
-            $error = is_array($body)
-                ? ($body['message'] ?? ($body['error_message'] ?? json_encode($body)))
+            $rawError = is_array($body)
+                ? ($body['message'] ?? ($body['error_message'] ?? $body))
                 : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
+    private function sendTextViaYCloud(string $to, string $text): array
+    {
+        $apiKey = config('services.ycloud.api_key');
+        $phoneNumberId = config('services.ycloud.phone_number_id');
+        if (!$apiKey || !$phoneNumberId) {
+            return $this->result(false, null, 'YCloud no configurado');
+        }
+        $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['X-API-Key' => $apiKey])
+                ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", [
+                    'messaging_product' => 'whatsapp',
+                    'recipient_type' => 'individual',
+                    'to' => ltrim($to, '+'),
+                    'type' => 'text',
+                    'text' => ['body' => $text],
+                ]);
+            $body = $response->json();
+            if ($response->ok() && isset($body['messages'][0]['id'])) {
+                return $this->result(true, $body['messages'][0]['id'], null, $body);
+            }
+            $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
         } catch (\Throwable $e) {
             return $this->result(false, null, $e->getMessage(), []);
         }
@@ -314,10 +313,11 @@ class WhatsAppService
             if ($response->ok() && isset($body['messages'][0]['id'])) {
                 return $this->result(true, $body['messages'][0]['id'], null, $body);
             }
-            $error = is_array($body)
-                ? ($body['error']['message'] ?? ($body['message'] ?? json_encode($body)))
+            $rawError = is_array($body)
+                ? ($body['error']['message'] ?? ($body['message'] ?? $body))
                 : $response->body();
-            return $this->result(false, null, $error, $body ?? []);
+            $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+            return $this->result(false, null, $error, is_array($body) ? $body : []);
         } catch (\Throwable $e) {
             return $this->result(false, null, $e->getMessage(), []);
         }
@@ -325,14 +325,18 @@ class WhatsAppService
 
     private function provider(): ?string
     {
+        if (config('services.zavu.api_key')) {
+            return 'zavu';
+        }
+        // YCloud (Forever Free) tiene prioridad si está configurado - usa API compatible Meta
+        if (config('services.ycloud.api_key') && config('services.ycloud.phone_number_id')) {
+            return 'ycloud';
+        }
         if (config('services.whatsapp.token') && config('services.whatsapp.phone_number_id')) {
             return 'meta';
         }
         if (config('services.twilio.account_sid') && config('services.twilio.auth_token')) {
             return 'twilio';
-        }
-        if (config('services.zavu.key')) {
-            return 'zavu';
         }
         return null;
     }
@@ -359,6 +363,75 @@ class WhatsAppService
             $params['empresa'],
             $params['numero_pedido']
         );
+    }
+
+    private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName): array
+    {
+        $apiKey = config('services.zavu.api_key');
+        $senderId = auth()->user()->phone ?? config('services.zavu.sender_id');
+        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
+        if (!$apiKey) {
+            return $this->result(false, null, 'Zavu no configurado');
+        }
+        $text = $this->fallbackText($client, $company);
+        $phone = ltrim($to, '+');
+        $params = $this->buildParams($client, $company);
+        $phone = '+'.ltrim($to, '+');
+        $templateId = config('services.zavu.template_id');
+        try {
+            $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
+            $payload = ['to' => $phone, 'channel' => 'whatsapp'];
+            if ($templateId) {
+                $payload['messageType'] = 'template';
+                $payload['content'] = ['templateId' => $templateId, 'templateVariables' => [
+                    '1' => $params['nombre_cliente'], '2' => $params['empresa'], '3' => $params['numero_pedido'], '4' => $params['direccion'], '5' => $params['telefono'],
+                ]];
+            } else {
+                $payload['text'] = $this->fallbackText($client, $company);
+            }
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders($headers)
+                ->post(rtrim($baseUrl, '/').'/v1/messages', $payload);
+            $body = $response->json();
+            if ($response->successful() && isset($body['message']['id'])) {
+                return $this->result(true, $body['message']['id'], null, is_array($body) ? $body : []);
+            }
+            if ($response->successful() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, is_array($body) ? $body : []);
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
+    private function sendTextViaZavu(string $to, string $text): array
+    {
+        $apiKey = config('services.zavu.api_key');
+        $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
+        $phone = '+'.ltrim($to, '+');
+        try {
+            $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
+            $response = \Illuminate\Support\Facades\Http::timeout(30)
+                ->withHeaders($headers)
+                ->post(rtrim($baseUrl, '/').'/v1/messages', [
+                    'to' => $phone,
+                    'text' => $text,
+                    'channel' => 'whatsapp',
+                ]);
+            $body = $response->json();
+            if ($response->successful() && isset($body['message']['id'])) {
+                return $this->result(true, $body['message']['id'], null, is_array($body) ? $body : []);
+            }
+            if ($response->successful() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, is_array($body) ? $body : []);
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
     }
 
     private function result(bool $ok, ?string $messageId, ?string $error, array $response = []): array

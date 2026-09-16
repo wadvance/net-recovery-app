@@ -60,7 +60,7 @@ class DashboardController extends Controller
             $taskData = $tasks->get();
 
             return [
-                'id' => $agent->id, 'name' => $agent->name,
+                'id' => $agent->id, 'name' => $agent->name ?? $agent->email ?? 'Sin nombre',
                 'total_tasks' => $taskData->count(),
                 'completed' => $taskData->where('status', 'completed')->count(),
                 'failed' => $taskData->where('status', 'failed')->count(),

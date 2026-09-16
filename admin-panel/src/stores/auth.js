@@ -46,7 +46,14 @@ export const useAuthStore = defineStore('auth', () => {
 
       return true
     } catch (err) {
-      error.value = err.response?.data?.message || 'Error al iniciar sesión'
+      if (err.isNetworkError || !err.response) {
+        error.value = 'No se pudo conectar con el servidor. Verifica tu conexión o intenta de nuevo en unos segundos.'
+      } else {
+        error.value =
+          err.response?.data?.message ||
+          err.response?.data?.errors?.email?.[0] ||
+          'Error al iniciar sesión'
+      }
       return false
     } finally {
       loading.value = false

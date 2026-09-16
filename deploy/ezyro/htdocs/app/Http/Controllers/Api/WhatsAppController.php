@@ -45,7 +45,20 @@ class WhatsAppController extends Controller
         $clients = $clientsQuery->get();
 
         $created = 0;
+        $skipped = 0;
+        $seenPhones = [];
         foreach ($clients as $clientRecord) {
+            // Solo 1 por cliente/teléfono — dedup en lote y contra BD
+            $suffix = substr(preg_replace('/\D/', '', $clientRecord->formatted_phone), -8);
+            if (isset($seenPhones[$suffix])) {
+                $skipped++;
+                continue;
+            }
+            $seenPhones[$suffix] = true;
+            if ($this->alreadyNotified($clientRecord)) {
+                $skipped++;
+                continue;
+            }
             $clientCompany = $clientRecord->company ?: $company;
             $params = $this->buildTemplateParams($clientCompany, $clientRecord);
             $message = WhatsAppMessage::create([
@@ -68,9 +81,10 @@ class WhatsAppController extends Controller
         }
 
         return response()->json([
-            'message' => "Se procesaron {$created} mensajes",
+            'message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos por ya notificados - 1 por cliente)" : ""),
             'created' => $created,
-            'configured' => (bool) config('services.twilio.account_sid') || (bool) config('services.zavu.key'),
+            'skipped' => $skipped,
+            'configured' => (bool) config('services.whatsapp.token') && (bool) config('services.whatsapp.phone_number_id') || (bool) config('services.twilio.account_sid'),
         ]);
     }
 
@@ -85,6 +99,10 @@ class WhatsAppController extends Controller
         $company = $request->company_id ? Company::find($request->company_id) : null;
         $client = Client::with('company')->find($request->client_id);
         $company = $company ?: $client->company;
+
+        if ($this->alreadyNotified($client)) {
+            return response()->json(['message' => 'Cliente ya notificado por WhatsApp - solo 1 por cliente'], 422);
+        }
 
         $params = $this->buildTemplateParams($company, $client);
         $message = WhatsAppMessage::create([
@@ -132,6 +150,10 @@ class WhatsAppController extends Controller
 
         $company = $task->company;
 
+        if ($this->alreadyNotified($client)) {
+            return response()->json(['message' => 'Cliente ya notificado por WhatsApp - solo 1 por cliente', 'status' => 'skipped'], 422);
+        }
+
         $params = $this->buildTemplateParams($company, $client);
         $message = WhatsAppMessage::create([
             'company_id' => $company?->id,
@@ -154,6 +176,40 @@ class WhatsAppController extends Controller
         ]);
     }
 
+    public function sendBulkForUser(Request $request, \App\Models\User $user)
+    {
+        $request->validate(['template_name' => 'nullable|string']);
+        $templateName = $request->input('template_name', 'equipment_recovery_notification');
+        $authUser = $request->user();
+        if ($authUser->role === 'agent' && $authUser->id !== $user->id) {
+            return response()->json(['message' => 'No autorizado'], 403);
+        }
+        $clientIds = Task::where('assigned_to', $user->id)->with('client')->get()
+            ->pluck('client_id')->filter()->unique()->values();
+        if ($clientIds->isEmpty()) {
+            return response()->json(['message' => 'El usuario no tiene clientes asignados', 'created' => 0, 'skipped' => 0], 422);
+        }
+        $firstTask = Task::where('assigned_to', $user->id)->with('company')->first();
+        $company = $firstTask?->company;
+        if (!$company) $company = Company::first();
+        $clients = Client::with('company')->whereIn('id', $clientIds)->get();
+        $created = 0; $skipped = 0; $seenPhones = [];
+        foreach ($clients as $client) {
+            $suffix = substr(preg_replace('/\D/', '', $client->formatted_phone), -8);
+            if ($suffix && isset($seenPhones[$suffix])) { $skipped++; continue; }
+            if ($suffix) $seenPhones[$suffix] = true;
+            if ($this->alreadyNotified($client)) { $skipped++; continue; }
+            $clientCompany = $client->company ?: $company;
+            $params = $this->buildTemplateParams($clientCompany, $client);
+            $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $templateName, 'template_params' => $params, 'status' => 'pending']);
+            $created++;
+            $result = (new WhatsAppService())->sendToClient($client, $clientCompany, $templateName);
+            if ($result['ok']) $msg->markSent($result['messageId'] ?? '', $result['response'] ?? []);
+            else $msg->markFailed($result['error']);
+        }
+        return response()->json(['message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos)" : ""), 'created' => $created, 'skipped' => $skipped]);
+    }
+
     public function messages(Request $request)
     {
         $user = $request->user();
@@ -171,6 +227,19 @@ class WhatsAppController extends Controller
         if ($request->has('status')) $query->where('status', $request->status);
 
         return response()->json($query->paginate($request->get('per_page', 15)));
+    }
+
+    private function alreadyNotified(Client $client): bool
+    {
+        $suffix = substr(preg_replace('/\D/', '', $client->formatted_phone), -8);
+        if (!$suffix) return false;
+        return WhatsAppMessage::where('direction', 'outbound')
+            ->where(function ($q) use ($client, $suffix) {
+                $q->where('client_id', $client->id)
+                  ->orWhere('to_phone', 'like', '%' . $suffix);
+            })
+            ->where('status', '!=', 'failed')
+            ->exists();
     }
 
     private function buildTemplateParams($company, Client $client): array

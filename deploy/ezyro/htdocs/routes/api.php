@@ -1,4 +1,5 @@
 <?php
+// v2 - rutas meta webhook activas
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
@@ -12,7 +13,8 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PerformanceController;
 use App\Http\Controllers\Api\ConversationController;
-use App\Http\Controllers\Api\ZavuWebhookController;
+use App\Http\Controllers\Api\EquipmentScanController;
+use App\Http\Controllers\Api\MetaWebhookController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', function () {
@@ -22,8 +24,9 @@ Route::prefix('v1')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 
-    // Zavu webhook (público, verifica firma)
-    Route::post('/whatsapp/webhook', [ZavuWebhookController::class, 'handle']);
+    // Meta Cloud API webhook directo (Opción C): verificación GET + mensajes POST
+    Route::get('/whatsapp/meta/webhook', [MetaWebhookController::class, 'verify']);
+    Route::post('/whatsapp/meta/webhook', [MetaWebhookController::class, 'receive']);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
@@ -43,6 +46,7 @@ Route::prefix('v1')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::get('/users/agents', [UserController::class, 'agents']);
         Route::get('/users/{user}', [UserController::class, 'show']);
+        Route::post('/users/{user}/whatsapp-bulk', [WhatsAppController::class, 'sendBulkForUser']);
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{user}', [UserController::class, 'update']);
         Route::delete('/users/{user}', [UserController::class, 'destroy']);
@@ -115,6 +119,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/reports/schedules', [ReportController::class, 'storeSchedule']);
         Route::put('/reports/schedules/{schedule}', [ReportController::class, 'updateSchedule']);
         Route::delete('/reports/schedules/{schedule}', [ReportController::class, 'destroySchedule']);
+
+        // Escaneo de equipos con el celular (cámara / manual)
+        Route::get('/scans/export', [EquipmentScanController::class, 'export']);
+        Route::get('/scans', [EquipmentScanController::class, 'index']);
+        Route::post('/scans', [EquipmentScanController::class, 'store']);
+        Route::delete('/scans/{scan}', [EquipmentScanController::class, 'destroy']);
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);

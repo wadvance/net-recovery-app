@@ -485,7 +485,7 @@ class _TaskDetailContentState extends ConsumerState<_TaskDetailContent> {
   }
 
   Future<void> _addEvidence(TaskModel task) async {
-    // TODO: Implement camera/gallery picker
+    // TODO(pending): Implement camera/gallery picker
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(

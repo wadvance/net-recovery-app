@@ -1,7 +1,7 @@
 FROM php:8.3-cli
 
 RUN apt-get update && apt-get install -y \
-    libpng-dev \
+    libpng-dev libjpeg-dev \
     libonig-dev \
     libxml2-dev libsqlite3-dev \
     zip \

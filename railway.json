@@ -1,0 +1,11 @@
+{
+  "$schema": "https://raw.githubusercontent.com/railwayapp/railway/main/config/schema.json",
+  "name": "net-recovery-backend",
+  "environments": {
+    "production": {
+      "build": {
+        "dockerfile": "Dockerfile"
+      }
+    }
+  }
+}

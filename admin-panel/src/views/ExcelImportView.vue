@@ -59,22 +59,6 @@
           </div>
 
           <div>
-            <label class="label">Empresa</label>
-            <select
-              v-model="selectedCompanyId"
-              class="input"
-            >
-              <option
-                v-for="c in companies"
-                :key="c.id"
-                :value="c.id"
-              >
-                {{ c.name }}
-              </option>
-            </select>
-          </div>
-
-          <div>
             <label class="label">Fecha programada de las tareas</label>
             <input
               v-model="scheduledDate"
@@ -270,7 +254,7 @@
             </p>
           </div>
 
-          <div class="space-y-3">
+          <div v-if="false" class="space-y-3">
             <div>
               <label class="label">Nombre del Cliente *</label>
               <select
@@ -825,10 +809,6 @@ function handleFile(e) {
 
 async function uploadFile() {
   if (!file.value) return;
-  if (!selectedCompanyId.value) {
-    alert("Selecciona una empresa");
-    return;
-  }
   uploading.value = true;
   imported.value = false;
   lastResult.value = {};
@@ -836,7 +816,7 @@ async function uploadFile() {
   try {
     const formData = new FormData();
     formData.append("file", file.value);
-    formData.append("company_id", selectedCompanyId.value);
+    if (selectedCompanyId.value) formData.append("company_id", selectedCompanyId.value);
     formData.append("scheduled_date", scheduledDate.value);
     const res = await excelApi.import(formData);
     importData.value = res.data.import;

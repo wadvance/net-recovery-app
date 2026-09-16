@@ -1,7 +1,7 @@
 FROM php:8.3-cli
 
 RUN apt-get update && apt-get install -y \
-    libpng-dev libjpeg-dev \
+    libpng-dev libjpeg-dev libfreetype6-dev \
     libonig-dev \
     libxml2-dev libsqlite3-dev \
     zip \
@@ -29,3 +29,4 @@ RUN cp .env.example .env && \
 EXPOSE 8000
 
 CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+

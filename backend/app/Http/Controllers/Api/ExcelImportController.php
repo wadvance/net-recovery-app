@@ -109,7 +109,11 @@ class ExcelImportController extends Controller
         $storedFilename = 'imports/' . time() . '_' . $file->getClientOriginalName();
         $file->storeAs('imports', basename($storedFilename), 'local');
 
-        $spreadsheet = Excel::toArray([], $file);
+        try {
+            $spreadsheet = Excel::toArray([], $file);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Error leyendo Excel: ' . $e->getMessage()], 422);
+        }
         $rows = $spreadsheet[0] ?? [];
         $totalRows = max(count($rows) - 1, 0);
         $headers = array_map(fn($h) => trim((string) $h), array_shift($rows) ?? []);

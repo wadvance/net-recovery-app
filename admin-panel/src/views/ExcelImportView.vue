@@ -790,9 +790,6 @@ async function fetchCompanies() {
   try {
     const res = await companiesApi.getAll();
     companies.value = res.data.data || res.data;
-    if (!selectedCompanyId.value && companies.value.length) {
-      selectedCompanyId.value = companies.value[0].id;
-    }
   } catch (e) {}
 }
 

@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y libpng-dev libonig-dev libxml2-dev libs
 WORKDIR /app
 COPY backend/ ./
 RUN COMPOSER_ALLOW_SUPERUSER=1 composer install --no-interaction --optimize-autoloader --no-dev
-RUN cp .env.example .env && php artisan key:generate --ansi && php artisan migrate --force
+RUN cp .env.example .env && php artisan key:generate --ansi && php artisan migrate --force --seed
 EXPOSE 8000
 CMD ["sh", "-c", "php artisan serve --host=0.0.0.0 --port=${PORT:-8000}"]
+

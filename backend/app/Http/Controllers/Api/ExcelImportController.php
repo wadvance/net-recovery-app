@@ -127,7 +127,7 @@ class ExcelImportController extends Controller
         $mapping = $this->autoMapHeaders($headersRaw);
 
         $import = ExcelImport::create([
-            'company_id' => $request->company_id,
+            'company_id' => $request->company_id ?? Company::first()?->id,
             'imported_by' => $request->user()->id,
             'original_filename' => $file->getClientOriginalName(),
             'stored_filename' => $storedFilename,

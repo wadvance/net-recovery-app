@@ -99,12 +99,17 @@ class ExcelImportController extends Controller
 
     public function import(Request $request)
     {
-        \Log::info('import start', ['files' => array_keys($request->allFiles()), 'all' => array_keys($request->all())]);
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-            'company_id' => 'nullable|exists:companies,id',
-            'scheduled_date' => 'nullable|date',
-        ]);
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+                'company_id' => 'nullable|exists:companies,id',
+                'scheduled_date' => 'nullable|date',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Error validando: ' . get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine()], 422);
+        }
 
         try {
             $file = $request->file('file');

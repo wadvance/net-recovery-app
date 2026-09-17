@@ -265,24 +265,23 @@ class WhatsAppService
     private function sendTextViaYCloud(string $to, string $text, ?User $user = null): array
     {
         $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.ycloud.api_key');
-        $phoneNumberId = $user?->settings['whatsapp_phone_number_id'] ?? config('services.ycloud.phone_number_id');
-        if (!$apiKey || !$phoneNumberId) {
+        $fromNumber = $user?->settings['whatsapp_phone_number'] ?? config('services.ycloud.phone_number');
+        if (!$apiKey || !$fromNumber) {
             return $this->result(false, null, 'YCloud no configurado');
         }
         $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
         try {
             $response = Http::timeout(30)
-                ->withHeaders(['X-API-Key' => $apiKey])
-                ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", [
-                    'messaging_product' => 'whatsapp',
-                    'recipient_type' => 'individual',
-                    'to' => ltrim($to, '+'),
+                ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
+                ->post("{$baseUrl}/v2/whatsapp/messages", [
+                    'from' => $fromNumber,
+                    'to' => $to,
                     'type' => 'text',
                     'text' => ['body' => $text],
                 ]);
             $body = $response->json();
-            if ($response->ok() && isset($body['messages'][0]['id'])) {
-                return $this->result(true, $body['messages'][0]['id'], null, $body);
+            if ($response->ok() && isset($body['id'])) {
+                return $this->result(true, $body['id'], null, $body);
             }
             $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
             $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);

@@ -33,6 +33,9 @@ Route::prefix('v1')->group(function () {
             'upload_max' => ini_get('upload_max_filesize'),
             'maatwebsite' => class_exists(\Maatwebsite\Excel\Facades\Excel::class),
             'db' => (function(){ try { \DB::connection()->getPdo(); return 'ok'; } catch (\Throwable $e) { return $e->getMessage(); } })(),
+            'getenv_APP_DEBUG' => getenv('APP_DEBUG'),
+            'server_APP_DEBUG' => $_SERVER['APP_DEBUG'] ?? null,
+            'env_APP_DEBUG' => $_ENV['APP_DEBUG'] ?? null,
         ]);
     });
 

@@ -106,14 +106,13 @@ class ExcelImportController extends Controller
             'scheduled_date' => 'nullable|date',
         ]);
 
-        $file = $request->file('file');
-        $storedFilename = 'imports/' . time() . '_' . $file->getClientOriginalName();
-        $file->storeAs('imports', basename($storedFilename), 'local');
-
         try {
+            $file = $request->file('file');
+            $storedFilename = 'imports/' . time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('imports', basename($storedFilename), 'local');
             $spreadsheet = Excel::toArray([], $file);
         } catch (\Throwable $e) {
-            return response()->json(['message' => 'Error leyendo Excel: ' . $e->getMessage()], 422);
+            return response()->json(['message' => 'Error procesando Excel: ' . get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine()], 422);
         }
         $rows = $spreadsheet[0] ?? [];
         $totalRows = max(count($rows) - 1, 0);

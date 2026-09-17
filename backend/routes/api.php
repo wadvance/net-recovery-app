@@ -20,6 +20,21 @@ Route::prefix('v1')->group(function () {
     Route::get('/health', function () {
         return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
     });
+    Route::get('/diag', function () {
+        return response()->json([
+            'app_debug' => config('app.debug'),
+            'app_env' => config('app.env'),
+            'php' => PHP_VERSION,
+            'extensions' => array_values(array_filter(['zip','xml','mbstring','sqlite3','pdo_sqlite','fileinfo','gd','curl'], fn($e) => extension_loaded($e))),
+            'missing' => array_values(array_filter(['zip','xml','mbstring','sqlite3','pdo_sqlite','fileinfo','gd','curl'], fn($e) => !extension_loaded($e))),
+            'writable_storage' => is_writable(storage_path()),
+            'writable_imports' => is_writable(storage_path('app/imports')) || @mkdir(storage_path('app/imports'), 0777, true),
+            'post_max' => ini_get('post_max_size'),
+            'upload_max' => ini_get('upload_max_filesize'),
+            'maatwebsite' => class_exists(\Maatwebsite\Excel\Facades\Excel::class),
+            'db' => (function(){ try { \DB::connection()->getPdo(); return 'ok'; } catch (\Throwable $e) { return $e->getMessage(); } })(),
+        ]);
+    });
 
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);

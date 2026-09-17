@@ -78,7 +78,7 @@ return new class extends Migration
 
         Schema::create('excel_imports', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('company_id')->constrained()->onDelete('cascade');
+            $table->foreignId('company_id')->nullable()->constrained()->onDelete('cascade');
             $table->foreignId('imported_by')->constrained('users')->onDelete('cascade');
             $table->string('original_filename');
             $table->string('stored_filename');

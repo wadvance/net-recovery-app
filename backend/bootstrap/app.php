@@ -30,16 +30,4 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
-        // TEMP-DEBUG: mostrar trace real en API (revertir luego)
-        $exceptions->respond(function ($response, $e, $request) {
-            if ($request->is('api/*') && !($e instanceof \Illuminate\Validation\ValidationException)) {
-                return response()->json([
-                    'message' => $e->getMessage(),
-                    'class' => get_class($e),
-                    'at' => basename($e->getFile()) . ':' . $e->getLine(),
-                    'trace' => collect($e->getTrace())->take(6)->map(fn ($t) => ($t['class'] ?? '') . ($t['type'] ?? '') . ($t['function'] ?? '') . ' @' . basename($t['file'] ?? '?') . ':' . ($t['line'] ?? '?'))->values(),
-                ], 500);
-            }
-            return $response;
-        });
     })->create();

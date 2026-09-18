@@ -192,6 +192,15 @@ class WhatsAppService
                 }
                 $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
                 $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+                // Si la plantilla no está disponible/aprobada, reintentar como texto libre.
+                if ($templateName && str_contains(strtolower($error), 'template') && (str_contains(strtolower($error), 'pending') || str_contains(strtolower($error), 'unavailable') || str_contains(strtolower($error), 'not found'))) {
+                    $fallback = ['from' => $fromNumber, 'to' => $client->formatted_phone, 'type' => 'text', 'text' => ['body' => $this->fallbackText($client, $company)]];
+                    $r2 = Http::timeout(30)->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])->post("{$baseUrl}/v2/whatsapp/messages", $fallback);
+                    $b2 = $r2->json();
+                    if ($r2->ok() && isset($b2['id'])) {
+                        return $this->result(true, $b2['id'], null, $b2);
+                    }
+                }
                 return $this->result(false, null, $error, is_array($body) ? $body : []);
             }
 

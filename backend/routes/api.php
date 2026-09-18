@@ -21,6 +21,7 @@ Route::prefix('v1')->group(function () {
         return response()->json(['status' => 'ok', 'timestamp' => now()->toISOString()]);
     });
 
+
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register']);
 

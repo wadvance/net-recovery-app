@@ -99,17 +99,26 @@ class ExcelImportController extends Controller
 
     public function import(Request $request)
     {
-        $request->validate([
-            'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
-            'company_id' => 'required|exists:companies,id',
-            'scheduled_date' => 'nullable|date',
-        ]);
+        try {
+            $request->validate([
+                'file' => 'required|file|mimes:xlsx,xls,csv|max:51200',
+                'company_id' => 'nullable|exists:companies,id',
+                'scheduled_date' => 'nullable|date',
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Error validando: ' . get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine()], 422);
+        }
 
-        $file = $request->file('file');
-        $storedFilename = 'imports/' . time() . '_' . $file->getClientOriginalName();
-        $file->storeAs('imports', basename($storedFilename), 'local');
-
-        $spreadsheet = Excel::toArray([], $file);
+        try {
+            $file = $request->file('file');
+            $storedFilename = 'imports/' . time() . '_' . $file->getClientOriginalName();
+            $file->storeAs('imports', basename($storedFilename), 'local');
+            $spreadsheet = Excel::toArray([], $file);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Error procesando Excel: ' . get_class($e) . ': ' . $e->getMessage() . ' @' . basename($e->getFile()) . ':' . $e->getLine()], 422);
+        }
         $rows = $spreadsheet[0] ?? [];
         $totalRows = max(count($rows) - 1, 0);
         $headers = array_map(fn($h) => trim((string) $h), array_shift($rows) ?? []);
@@ -118,7 +127,7 @@ class ExcelImportController extends Controller
         $mapping = $this->autoMapHeaders($headersRaw);
 
         $import = ExcelImport::create([
-            'company_id' => $request->company_id,
+            'company_id' => $request->company_id ?? Company::first()?->id,
             'imported_by' => $request->user()->id,
             'original_filename' => $file->getClientOriginalName(),
             'stored_filename' => $storedFilename,
@@ -336,8 +345,30 @@ class ExcelImportController extends Controller
                     if (!empty($usuario)) {
                         $assignedUser = $this->findUserByName($usuario);
                         if (!$assignedUser) {
-                            $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (se asigna al que sube el archivo)";
+                            $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (se asigna al primer agente activo)";
+                            $assignedUser = User::where('is_active', true)->where('role', 'agent')->first();
                         }
+                        if ($assignedUser) {
+                            $task->update([
+                                'assigned_to' => $assignedUser->id,
+                                'status' => 'assigned',
+                                'scheduled_date' => $request->scheduled_date,
+                            ]);
+                            $client->update(['status' => 'assigned']);
+                            TaskAssignment::create([
+                                'task_id' => $task->id,
+                                'user_id' => $assignedUser->id,
+                                'assigned_by' => $request->user()->id,
+                                'assignment_type' => 'import',
+                            ]);
+                        } else {
+                            $errors[] = "Fila " . ($index + 2) . ": Usuario '{$usuario}' no encontrado (tarea creada sin asignar)";
+                        }
+                    } else {
+                        $fallback = User::where('is_active', true)->where('role', 'agent')->first() ?? $request->user();
+                        $task->update(['assigned_to' => $fallback->id, 'status' => 'assigned', 'scheduled_date' => $request->scheduled_date]);
+                        $client->update(['status' => 'assigned']);
+                        TaskAssignment::create(['task_id' => $task->id, 'user_id' => $fallback->id, 'assigned_by' => $request->user()->id, 'assignment_type' => 'import']);
                     }
                     // Fallback: si no hay USUARIO en el Excel o no se encontró, asignar al usuario que sube el archivo
                     if (!$assignedUser) {

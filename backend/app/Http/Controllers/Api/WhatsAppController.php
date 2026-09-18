@@ -34,7 +34,7 @@ class WhatsAppController extends Controller
             'company_id' => 'required|exists:companies,id',
             'client_ids' => 'required|array|min:1',
             'client_ids.*' => 'exists:clients,id',
-            'template_name' => 'required|string',
+            'template_name' => 'nullable|string',
         ]);
 
         $company = Company::find($request->company_id);
@@ -118,7 +118,7 @@ class WhatsAppController extends Controller
     {
         $request->validate([
             'client_id' => 'required|exists:clients,id',
-            'template_name' => 'required|string',
+            'template_name' => 'nullable|string',
             'task_id' => 'nullable|exists:tasks,id',
         ]);
 

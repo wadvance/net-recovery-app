@@ -583,7 +583,25 @@ class WhatsAppService
 
     private function fallbackText(Client $client, Company $company): string
     {
-        return self::companyText($company);
+        return self::clientHeader($client, $company) . "\n\n" . self::companyText($company);
+    }
+
+    /**
+     * Encabezado con los datos del cliente que va arriba del mensaje:
+     * nombre, empresa, suscriptor, dirección y teléfono.
+     */
+    public static function clientHeader(Client $client, ?Company $company): string
+    {
+        $suscriptor = $client->metadata['suscriptor'] ?? $client->order_number;
+        $clientName = $client->full_name ?: 'Estimado cliente';
+        $lines = [
+            'Cliente: ' . $clientName,
+            'Empresa: ' . ($company?->name ?? 'nuestra empresa'),
+            'Suscriptor: ' . ($suscriptor ?: '-'),
+            'Dirección: ' . ($client->address ?: '-'),
+            'Teléfono: ' . ($client->phone ? '+' . ltrim($client->phone, '+') : '-'),
+        ];
+        return implode("\n", $lines);
     }
 
     private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array

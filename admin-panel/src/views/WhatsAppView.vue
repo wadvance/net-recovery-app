@@ -234,11 +234,15 @@
       <div class="card">
         <h3 class="font-semibold mb-4 text-gray-800 dark:text-white">
           Vista previa del mensaje
+          <span
+            v-if="previewCompanyName"
+            class="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400"
+          >({{ previewCompanyName }})</span>
         </h3>
         <div class="bg-green-50 dark:bg-green-900/30 rounded-xl p-4">
           <div class="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm max-w-xs">
             <p class="text-sm text-gray-800 dark:text-gray-100 leading-relaxed">
-              Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.
+              {{ previewText }}
             </p>
             <p class="text-xs text-gray-400 text-right mt-2">
               WhatsApp
@@ -464,6 +468,21 @@ const selectedClients = computed(() => {
 const selectedClientIds = computed(() => selectedClients.value.map(c => c.id))
 
 const companyIdOf = (c) => c?.company?.id || c?.company_id
+
+const DEFAULT_WODEN_TEXT = 'Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.'
+
+// Texto de la empresa del primer cliente seleccionado (cada empresa tiene el
+// suyo en Empresas > Editar). Así se verifica qué recibirá cada número.
+const previewClient = computed(() => selectedClients.value[0] || dayGroups.value[0]?.clients[0] || null)
+const previewCompanyName = computed(() => (previewClient.value ? companyName(previewClient.value) : ''))
+const previewText = computed(() => {
+  const c = previewClient.value
+  const direct = (c?.company?.settings?.whatsapp_text || '').trim()
+  if (direct) return direct
+  const local = companies.value.find(x => x && String(x.id) === String(companyIdOf(c)))
+  const t = (local?.settings?.whatsapp_text || '').trim()
+  return t || DEFAULT_WODEN_TEXT
+})
 
 function selectAllDay() {
   selectedByUser.value = {}

@@ -466,7 +466,7 @@ class ExcelImportController extends Controller
             $result = $whatsapp->sendToClient(
                 $item['client'],
                 $companiesById[$companyId],
-                'equipment_recovery_notification',
+                WhatsAppService::resolveTemplate($companiesById[$companyId], 'equipment_recovery_notification'),
                 $senderId,
                 $agent
             );

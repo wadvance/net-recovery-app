@@ -74,19 +74,22 @@ class WhatsAppController extends Controller
                 continue;
             }
             $clientCompany = $clientRecord->company ?: $company;
+            // Cada empresa usa su propia plantilla (la de su settings);
+            // lo solicitado solo aplica si la empresa no tiene una.
+            $effectiveTemplate = WhatsAppService::resolveTemplate($clientCompany, $request->template_name);
             $params = $this->buildTemplateParams($clientCompany, $clientRecord);
             $message = WhatsAppMessage::create([
                 'company_id' => $clientCompany?->id ?? $company?->id,
                 'client_id' => $clientRecord->id,
                 'to_phone' => $clientRecord->formatted_phone,
-                'template_name' => $request->template_name,
+                'template_name' => $effectiveTemplate,
                 'template_params' => $params,
                 'status' => 'pending',
             ]);
 
             $created++;
 
-            $result = (new WhatsAppService())->sendToClient($clientRecord, $clientCompany, $request->template_name, null, $authUser);
+            $result = (new WhatsAppService())->sendToClient($clientRecord, $clientCompany, $effectiveTemplate, null, $authUser);
             if ($result['ok']) {
                 $sent++;
                 $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
@@ -131,17 +134,18 @@ class WhatsAppController extends Controller
         }
 
         $params = $this->buildTemplateParams($company, $client);
+        $effectiveTemplate = WhatsAppService::resolveTemplate($company, $request->template_name);
         $message = WhatsAppMessage::create([
             'company_id' => $company?->id,
             'client_id' => $client->id,
             'task_id' => $request->task_id,
             'to_phone' => $client->formatted_phone,
-            'template_name' => $request->template_name,
+            'template_name' => $effectiveTemplate,
             'template_params' => $params,
             'status' => 'pending',
         ]);
 
-        $message = $this->dispatchMessage($message, $client, $company, $request->template_name, $request->user());
+        $message = $this->dispatchMessage($message, $client, $company, $effectiveTemplate, $request->user());
 
         if ($message->status === 'failed') {
             return response()->json(['message' => $message->error_message], 503);
@@ -181,6 +185,7 @@ class WhatsAppController extends Controller
         }
 
         $params = $this->buildTemplateParams($company, $client);
+        $templateName = WhatsAppService::resolveTemplate($company, $templateName);
         $message = WhatsAppMessage::create([
             'company_id' => $company?->id,
             'task_id' => $task->id,
@@ -237,9 +242,10 @@ class WhatsAppController extends Controller
             if ($this->alreadyNotified($client)) { $skipped++; continue; }
             $clientCompany = $client->company ?: $company;
             $params = $this->buildTemplateParams($clientCompany, $client);
-            $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $templateName, 'template_params' => $params, 'status' => 'pending']);
+            $effectiveTemplate = WhatsAppService::resolveTemplate($clientCompany, $templateName);
+            $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $effectiveTemplate, 'template_params' => $params, 'status' => 'pending']);
             $created++;
-            $result = (new WhatsAppService())->sendToClient($client, $clientCompany, $templateName, null, $user);
+            $result = (new WhatsAppService())->sendToClient($client, $clientCompany, $effectiveTemplate, null, $user);
             if ($result['ok']) { $sent++; $msg->markSent($result['messageId'] ?? '', $result['response'] ?? []); }
             else {
                 $failed++;

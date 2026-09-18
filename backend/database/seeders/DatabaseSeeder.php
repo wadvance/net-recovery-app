@@ -10,7 +10,7 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        Company::firstOrCreate(['code' => 'TIGO'], ['name' => 'TIGO', 'settings' => ['whatsapp_template' => 'equipment_recovery_notification']]);
+        Company::firstOrCreate(['code' => 'TIGO'], ['name' => 'TIGO', 'settings' => ['whatsapp_template' => 'equipment_recovery_notification', 'whatsapp_text' => \App\Services\WhatsAppService::WODEN_TEXT]]);
         Company::firstOrCreate(['code' => 'MAS_MOVIL'], ['name' => 'MAS MOVIL', 'settings' => ['whatsapp_template' => 'equipment_recovery_notification']]);
         Company::firstOrCreate(['code' => 'TELCA'], ['name' => 'TELCA', 'settings' => ['whatsapp_template' => 'equipment_recovery_notification']]);
 

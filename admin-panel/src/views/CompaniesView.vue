@@ -43,6 +43,9 @@
               Código
             </th>
             <th class="pb-3 font-medium">
+              Plantilla WhatsApp
+            </th>
+            <th class="pb-3 font-medium">
               Estado
             </th>
             <th class="pb-3 font-medium">
@@ -69,6 +72,9 @@
             </td>
             <td class="py-4 text-sm text-gray-600 dark:text-gray-300">
               {{ company.code }}
+            </td>
+            <td class="py-4 text-sm text-gray-600 dark:text-gray-300 font-mono">
+              {{ company.settings?.whatsapp_template || 'equipment_recovery_notification' }}
             </td>
             <td class="py-4">
               <span
@@ -130,6 +136,34 @@
               rows="2"
             />
           </div>
+          <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+              📱 Mensaje WhatsApp de esta empresa
+            </h4>
+            <div class="space-y-3">
+              <div>
+                <label class="label">Plantilla (YCloud/Meta aprobada)</label>
+                <input
+                  v-model="form.whatsapp_template"
+                  type="text"
+                  class="input font-mono text-sm"
+                  placeholder="equipment_recovery_notification"
+                >
+                <p class="text-xs text-gray-400 mt-1">
+                  Nombre exacto de la plantilla aprobada en YCloud para esta empresa. Así TIGO usa la suya y MAS MOVIL la suya.
+                </p>
+              </div>
+              <div>
+                <label class="label">Texto libre (vista previa y respaldo)</label>
+                <textarea
+                  v-model="form.whatsapp_text"
+                  class="input text-sm"
+                  rows="5"
+                  placeholder="Texto que reciben los clientes de esta empresa..."
+                />
+              </div>
+            </div>
+          </div>
           <div class="flex gap-3 pt-2">
             <button
               type="button"
@@ -159,7 +193,7 @@ const companies = ref([])
 const loading = ref(true)
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', code: '', description: '' })
+const form = ref({ name: '', code: '', description: '', whatsapp_template: '', whatsapp_text: '' })
 
 onMounted(fetchCompanies)
 
@@ -176,22 +210,39 @@ async function fetchCompanies() {
 
 function editCompany(company) {
   editing.value = company
-  form.value = { name: company.name, code: company.code, description: company.description }
+  form.value = {
+    name: company.name,
+    code: company.code,
+    description: company.description,
+    whatsapp_template: company.settings?.whatsapp_template || '',
+    whatsapp_text: company.settings?.whatsapp_text || '',
+  }
   showModal.value = true
 }
 
 function closeModal() {
   showModal.value = false
   editing.value = null
-  form.value = { name: '', code: '', description: '' }
+  form.value = { name: '', code: '', description: '', whatsapp_template: '', whatsapp_text: '' }
 }
 
 async function saveCompany() {
   try {
+    const settings = { ...((editing.value?.settings) || {}) }
+    if (form.value.whatsapp_template?.trim()) settings.whatsapp_template = form.value.whatsapp_template.trim()
+    else delete settings.whatsapp_template
+    if (form.value.whatsapp_text?.trim()) settings.whatsapp_text = form.value.whatsapp_text.trim()
+    else delete settings.whatsapp_text
+    const payload = {
+      name: form.value.name,
+      code: form.value.code,
+      description: form.value.description,
+      settings,
+    }
     if (editing.value) {
-      await companiesApi.update(editing.value.id, form.value)
+      await companiesApi.update(editing.value.id, payload)
     } else {
-      await companiesApi.create(form.value)
+      await companiesApi.create(payload)
     }
     closeModal()
     fetchCompanies()

@@ -87,6 +87,49 @@ class WhatsAppService
     }
 
     /**
+     * Texto libre de WODEN/TIGO (por defecto). Cada empresa puede tener el
+     * suyo en companies.settings['whatsapp_text'] (editable en el panel).
+     */
+    public const WODEN_TEXT = 'Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.';
+
+    /** Texto libre de la empresa (settings.whatsapp_text) o el de WODEN por defecto. */
+    public static function companyText(?Company $company): string
+    {
+        $text = trim((string) ($company?->settings['whatsapp_text'] ?? ''));
+        return $text !== '' ? $text : self::WODEN_TEXT;
+    }
+
+    /**
+     * Plantilla a usar para la empresa: la configurada en
+     * companies.settings['whatsapp_template'], si no la solicitada,
+     * si no la plantilla por defecto. Así TIGO puede usar su plantilla
+     * WODEN y MAS MOVIL la suya.
+     */
+    public static function resolveTemplate(?Company $company, ?string $requested = null): string
+    {
+        $fromCompany = trim((string) ($company?->settings['whatsapp_template'] ?? ''));
+        if ($fromCompany !== '') {
+            return $fromCompany;
+        }
+        $requested = trim((string) ($requested ?? ''));
+        if ($requested !== '') {
+            return $requested;
+        }
+        return config('services.whatsapp_templates.equipment_recovery_notification', config('services.whatsapp.default_template', 'equipment_recovery_notification'));
+    }
+
+    /** Template ID de Zavu de la empresa (settings.zavu_template_id) o el global. */
+    public static function resolveZavuTemplateId(?Company $company): ?string
+    {
+        $fromCompany = trim((string) ($company?->settings['zavu_template_id'] ?? ''));
+        if ($fromCompany !== '') {
+            return $fromCompany;
+        }
+        $global = trim((string) (config('services.zavu.template_id') ?? ''));
+        return $global !== '' ? $global : null;
+    }
+
+    /**
      * Credenciales YCloud efectivas: primero las del usuario (su sesión),
      * luego el fallback global de config/services.ycloud.
      *
@@ -124,6 +167,12 @@ class WhatsAppService
         $to = '+' . $client->formatted_phone;
         if (!$to || $to === '+') {
             return $this->result(false, null, 'Cliente sin telefono');
+        }
+
+        // La plantilla de la empresa manda: cada empresa usa la suya (TIGO la
+        // de WODEN, MAS MOVIL la suya). Si no hay, se usa la solicitada.
+        if ($templateName) {
+            $templateName = self::resolveTemplate($company, $templateName);
         }
 
         $provider = $this->provider($user);
@@ -534,7 +583,7 @@ class WhatsAppService
 
     private function fallbackText(Client $client, Company $company): string
     {
-        return 'Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.';
+        return self::companyText($company);
     }
 
     private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array
@@ -548,7 +597,7 @@ class WhatsAppService
         $phone = ltrim($to, '+');
         $params = $this->buildParams($client, $company);
         $phone = '+'.ltrim($to, '+');
-        $templateId = config('services.zavu.template_id');
+        $templateId = self::resolveZavuTemplateId($company);
         try {
             $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
             $payload = ['to' => $phone, 'channel' => 'whatsapp'];

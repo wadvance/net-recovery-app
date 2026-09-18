@@ -154,6 +154,18 @@
                 </p>
               </div>
               <div>
+                <label class="label">Template ID de Zavu (opcional)</label>
+                <input
+                  v-model="form.zavu_template_id"
+                  type="text"
+                  class="input font-mono text-sm"
+                  placeholder="tpl_abc123"
+                >
+                <p class="text-xs text-gray-400 mt-1">
+                  ID de la plantilla en Zavu para esta empresa (lo ves en Zavu → Plantillas). Si se deja vacío usa el global.
+                </p>
+              </div>
+              <div>
                 <label class="label">Texto libre (vista previa y respaldo)</label>
                 <textarea
                   v-model="form.whatsapp_text"
@@ -193,7 +205,7 @@ const companies = ref([])
 const loading = ref(true)
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', code: '', description: '', whatsapp_template: '', whatsapp_text: '' })
+const form = ref({ name: '', code: '', description: '', whatsapp_template: '', zavu_template_id: '', whatsapp_text: '' })
 
 onMounted(fetchCompanies)
 
@@ -215,6 +227,7 @@ function editCompany(company) {
     code: company.code,
     description: company.description,
     whatsapp_template: company.settings?.whatsapp_template || '',
+    zavu_template_id: company.settings?.zavu_template_id || '',
     whatsapp_text: company.settings?.whatsapp_text || '',
   }
   showModal.value = true
@@ -223,7 +236,7 @@ function editCompany(company) {
 function closeModal() {
   showModal.value = false
   editing.value = null
-  form.value = { name: '', code: '', description: '', whatsapp_template: '', whatsapp_text: '' }
+  form.value = { name: '', code: '', description: '', whatsapp_template: '', zavu_template_id: '', whatsapp_text: '' }
 }
 
 async function saveCompany() {
@@ -231,6 +244,8 @@ async function saveCompany() {
     const settings = { ...((editing.value?.settings) || {}) }
     if (form.value.whatsapp_template?.trim()) settings.whatsapp_template = form.value.whatsapp_template.trim()
     else delete settings.whatsapp_template
+    if (form.value.zavu_template_id?.trim()) settings.zavu_template_id = form.value.zavu_template_id.trim()
+    else delete settings.zavu_template_id
     if (form.value.whatsapp_text?.trim()) settings.whatsapp_text = form.value.whatsapp_text.trim()
     else delete settings.whatsapp_text
     const payload = {

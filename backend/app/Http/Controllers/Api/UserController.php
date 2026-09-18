@@ -41,6 +41,7 @@ class UserController extends Controller
             'password' => 'required|string|min:8',
             'phone' => 'nullable|string|max:20',
             'role' => ['required', Rule::in(['admin', 'supervisor', 'agent'])],
+            'whatsapp_provider' => 'nullable|string|in:ycloud,zavu',
             'whatsapp_sender_id' => 'nullable|string|max:64',
             'whatsapp_api_key' => 'nullable|string|max:255',
             'whatsapp_phone_number_id' => 'nullable|string|max:64',
@@ -57,6 +58,9 @@ class UserController extends Controller
         ]);
 
         $settings = [];
+        if ($request->filled('whatsapp_provider')) {
+            $settings['whatsapp_provider'] = $request->whatsapp_provider;
+        }
         if ($request->filled('whatsapp_sender_id')) {
             $settings['whatsapp_sender_id'] = $request->whatsapp_sender_id;
         }
@@ -85,6 +89,7 @@ class UserController extends Controller
             'phone' => 'nullable|string|max:20',
             'role' => ['sometimes', Rule::in(['admin', 'supervisor', 'agent'])],
             'is_active' => 'nullable|boolean',
+            'whatsapp_provider' => 'nullable|string|in:ycloud,zavu',
             'whatsapp_sender_id' => 'nullable|string|max:64',
             'whatsapp_api_key' => 'nullable|string|max:255',
             'whatsapp_phone_number_id' => 'nullable|string|max:64',
@@ -101,6 +106,13 @@ class UserController extends Controller
 
         // Actualizar settings de WhatsApp
         $settings = $user->settings ?? [];
+        if ($request->has('whatsapp_provider')) {
+            if ($request->whatsapp_provider) {
+                $settings['whatsapp_provider'] = $request->whatsapp_provider;
+            } else {
+                unset($settings['whatsapp_provider']);
+            }
+        }
         if ($request->has('whatsapp_sender_id')) {
             if ($request->whatsapp_sender_id) {
                 $settings['whatsapp_sender_id'] = $request->whatsapp_sender_id;

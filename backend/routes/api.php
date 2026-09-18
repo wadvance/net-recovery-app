@@ -100,6 +100,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/excel-import/clear-list', [ExcelImportController::class, 'clearList']);
 
         // WhatsApp
+        Route::get('/whatsapp/status', [WhatsAppController::class, 'status']);
         Route::post('/whatsapp/send-bulk', [WhatsAppController::class, 'sendBulk']);
         Route::post('/whatsapp/send-to-client', [WhatsAppController::class, 'sendToClient']);
         Route::get('/whatsapp/messages', [WhatsAppController::class, 'messages']);

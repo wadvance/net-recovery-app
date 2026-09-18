@@ -15,6 +15,110 @@ use Illuminate\Support\Facades\Http;
  */
 class WhatsAppService
 {
+    /**
+     * Mensaje estándar cuando el usuario no tiene sesión de YCloud.
+     * Cada usuario necesita su propia sesión en ycloud.com para que los
+     * mensajes masivos salgan desde su número y lleguen a los clientes.
+     */
+    public const MISSING_SESSION_MESSAGE = 'Tu usuario no tiene sesión de YCloud configurada. Crea tu sesión en https://ycloud.com, conecta tu número de WhatsApp Business y pega tu API Key + número remitente en Usuarios > Editar. Cada usuario debe tener su propia sesión para que los mensajes masivos lleguen a los clientes.';
+
+    /**
+     * Mensaje cuando el usuario no tiene ninguna sesión válida para masivos
+     * (ni YCloud ni Zavu). Cada usuario necesita su propia cuenta.
+     */
+    public const BULK_NO_SESSION_MESSAGE = 'Tu usuario no tiene sesión de WhatsApp configurada para envíos masivos. Registra tu API Key en Usuarios > Editar: si usas Zavu basta tu API Key de tu cuenta Zavu; si usas YCloud agrega además tu número remitente. Cada usuario debe tener su propia cuenta para que los mensajes lleguen a los clientes.';
+
+    /**
+     * ¿El usuario tiene sesión propia de YCloud completa?
+     * Requiere API Key + (número remitente o Phone Number ID).
+     */
+    public static function userHasYCloudSession(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        $settings = $user->settings ?? [];
+        $apiKey = trim((string) ($settings['whatsapp_api_key'] ?? ''));
+        $from = trim((string) ($settings['whatsapp_phone_number'] ?? ''));
+        $phoneId = trim((string) ($settings['whatsapp_phone_number_id'] ?? ''));
+        return $apiKey !== '' && ($from !== '' || $phoneId !== '');
+    }
+
+    /**
+     * Proveedor efectivo del usuario: 'ycloud', 'zavu' o null.
+     * Respeta la selección explícita (settings.whatsapp_provider); si no hay,
+     * auto: YCloud si la sesión está completa, Zavu si solo hay API Key
+     * (en Zavu el número remitente va ligado a la cuenta, no se configura aquí).
+     */
+    public static function userWhatsAppProvider(?User $user): ?string
+    {
+        if (!$user) {
+            return null;
+        }
+        $settings = $user->settings ?? [];
+        $explicit = $settings['whatsapp_provider'] ?? null;
+        if (in_array($explicit, ['ycloud', 'zavu'], true)) {
+            return $explicit;
+        }
+        if (self::userHasYCloudSession($user)) {
+            return 'ycloud';
+        }
+        if (trim((string) ($settings['whatsapp_api_key'] ?? '')) !== '') {
+            return 'zavu';
+        }
+        return null;
+    }
+
+    /** ¿El usuario tiene sesión propia de Zavu (su API Key de su cuenta Zavu)? */
+    public static function userHasZavuSession(?User $user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        $settings = $user->settings ?? [];
+        return self::userWhatsAppProvider($user) === 'zavu'
+            && trim((string) ($settings['whatsapp_api_key'] ?? '')) !== '';
+    }
+
+    /** ¿El usuario puede enviar masivos? (sesión YCloud o Zavu propia). */
+    public static function userHasBulkSession(?User $user): bool
+    {
+        return self::userHasYCloudSession($user) || self::userHasZavuSession($user);
+    }
+
+    /**
+     * Credenciales YCloud efectivas: primero las del usuario (su sesión),
+     * luego el fallback global de config/services.ycloud.
+     *
+     * @return array{apiKey: ?string, fromNumber: ?string, phoneNumberId: ?string, source: string}
+     */
+    public static function ycloudCredentials(?User $user): array
+    {
+        $settings = $user?->settings ?? [];
+        $userKey = trim((string) ($settings['whatsapp_api_key'] ?? ''));
+        $userFrom = trim((string) ($settings['whatsapp_phone_number'] ?? ''));
+        $userPhoneId = trim((string) ($settings['whatsapp_phone_number_id'] ?? ''));
+
+        // Si el usuario empezó a configurar su sesión (tiene API key),
+        // NO mezclar con el número global: su sesión debe estar completa
+        // o falla con mensaje claro. Evita enviar con key de uno + número de otro.
+        if ($userKey !== '') {
+            return [
+                'apiKey' => $userKey,
+                'fromNumber' => $userFrom !== '' ? $userFrom : null,
+                'phoneNumberId' => $userPhoneId !== '' ? $userPhoneId : null,
+                'source' => 'user',
+            ];
+        }
+
+        return [
+            'apiKey' => config('services.ycloud.api_key') ?: null,
+            'fromNumber' => config('services.ycloud.phone_number') ?: null,
+            'phoneNumberId' => config('services.ycloud.phone_number_id') ?: null,
+            'source' => 'global',
+        ];
+    }
+
     public function sendToClient(Client $client, Company $company, ?string $templateName = null, ?string $senderId = null, ?User $user = null): array
     {
         $to = '+' . $client->formatted_phone;
@@ -48,37 +152,74 @@ class WhatsAppService
 
     private function sendViaYCloud(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array
     {
-        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.ycloud.api_key');
-        $fromNumber = $user?->settings['whatsapp_phone_number'] ?? config('services.ycloud.phone_number');
-        if (!$apiKey || !$fromNumber) {
-            return $this->result(false, null, 'YCloud no configurado');
+        $creds = self::ycloudCredentials($user);
+        $apiKey = $creds['apiKey'];
+        $fromNumber = $creds['fromNumber'];
+        $phoneNumberId = $creds['phoneNumberId'];
+        if (!$apiKey || (!$fromNumber && !$phoneNumberId)) {
+            return $this->result(false, null, self::MISSING_SESSION_MESSAGE);
         }
         $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
         $params = $this->buildParams($client, $company);
-        $payload = [
-            'from' => $fromNumber,
-            'to' => $to,
-            'type' => $templateName ? 'template' : 'text',
-        ];
-        if ($templateName) {
-            $payload['template'] = [
-                'name' => $templateName,
-                'language' => ['code' => 'es'],
-                'components' => [[
-                    'type' => 'body',
-                    'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
-                ]],
-            ];
-        } else {
-            $payload['text'] = ['body' => $this->fallbackText($client, $company)];
-        }
+
         try {
+            // Vía nativa YCloud v2 (requiere número remitente "from" = sesión del usuario).
+            // Es la vía que usa la plantilla del masivo.
+            if ($fromNumber) {
+                $payload = [
+                    'from' => $fromNumber,
+                    'to' => $client->formatted_phone,
+                    'type' => $templateName ? 'template' : 'text',
+                ];
+                if ($templateName) {
+                    $payload['template'] = [
+                        'name' => $templateName,
+                        'language' => ['code' => 'es'],
+                        'components' => [[
+                            'type' => 'body',
+                            'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
+                        ]],
+                    ];
+                } else {
+                    $payload['text'] = ['body' => $this->fallbackText($client, $company)];
+                }
+                $response = Http::timeout(30)
+                    ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
+                    ->post("{$baseUrl}/v2/whatsapp/messages", $payload);
+                $body = $response->json();
+                if ($response->ok() && isset($body['id'])) {
+                    return $this->result(true, $body['id'], null, $body);
+                }
+                $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+                $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+                return $this->result(false, null, $error, is_array($body) ? $body : []);
+            }
+
+            // Fallback compatible Meta (solo con Phone Number ID, sin "from").
+            $payload = [
+                'messaging_product' => 'whatsapp',
+                'recipient_type' => 'individual',
+                'to' => ltrim($client->formatted_phone, '+'),
+                'type' => $templateName ? 'template' : 'text',
+            ];
+            if ($templateName) {
+                $payload['template'] = [
+                    'name' => $templateName,
+                    'language' => ['code' => 'es'],
+                    'components' => [[
+                        'type' => 'body',
+                        'parameters' => array_map(fn ($v) => ['type' => 'text', 'text' => (string) $v], array_values($params)),
+                    ]],
+                ];
+            } else {
+                $payload['text'] = ['body' => $this->fallbackText($client, $company)];
+            }
             $response = Http::timeout(30)
                 ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
-                ->post("{$baseUrl}/v2/whatsapp/messages", $payload);
+                ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", $payload);
             $body = $response->json();
-            if ($response->ok() && isset($body['id'])) {
-                return $this->result(true, $body['id'], null, $body);
+            if ($response->ok() && isset($body['messages'][0]['id'])) {
+                return $this->result(true, $body['messages'][0]['id'], null, $body);
             }
             $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
             $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
@@ -258,13 +399,36 @@ class WhatsAppService
 
     private function sendTextViaYCloud(string $to, string $text, ?User $user = null): array
     {
-        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.ycloud.api_key');
-        $phoneNumberId = $user?->settings['whatsapp_phone_number_id'] ?? config('services.ycloud.phone_number_id');
-        if (!$apiKey || !$phoneNumberId) {
-            return $this->result(false, null, 'YCloud no configurado');
+        $creds = self::ycloudCredentials($user);
+        $apiKey = $creds['apiKey'];
+        $fromNumber = $creds['fromNumber'];
+        $phoneNumberId = $creds['phoneNumberId'];
+        if (!$apiKey || (!$fromNumber && !$phoneNumberId)) {
+            return $this->result(false, null, self::MISSING_SESSION_MESSAGE);
         }
         $baseUrl = rtrim(config('services.ycloud.base_url', 'https://api.ycloud.com'), '/');
         try {
+            // Vía nativa v2 con número remitente (sesión del usuario).
+            if ($fromNumber) {
+                $response = Http::timeout(30)
+                    ->withHeaders(['X-API-Key' => $apiKey, 'Content-Type' => 'application/json'])
+                    ->post("{$baseUrl}/v2/whatsapp/messages", [
+                        'from' => $fromNumber,
+                        'to' => ltrim($to, '+'),
+                        'type' => 'text',
+                        'text' => ['body' => $text],
+                    ]);
+                $body = $response->json();
+                if ($response->ok() && isset($body['id'])) {
+                    return $this->result(true, $body['id'], null, $body);
+                }
+                // Si v2 falla, se intenta la vía compatible Meta abajo solo si hay phoneNumberId.
+                if (!$phoneNumberId) {
+                    $rawError = is_array($body) ? ($body['error']['message'] ?? ($body['message'] ?? $body)) : $response->body();
+                    $error = is_string($rawError) ? $rawError : json_encode($rawError, JSON_UNESCAPED_UNICODE);
+                    return $this->result(false, null, $error, is_array($body) ? $body : []);
+                }
+            }
             $response = Http::timeout(30)
                 ->withHeaders(['X-API-Key' => $apiKey])
                 ->post("{$baseUrl}/v1/{$phoneNumberId}/messages", [
@@ -324,12 +488,13 @@ class WhatsAppService
 
     private function provider(?User $user = null): ?string
     {
-        // Si el usuario tiene credenciales propias, usarlas
-        if ($user && $user->settings['whatsapp_api_key'] ?? null) {
-            return 'ycloud';
+        // Sesión propia del usuario primero: YCloud o Zavu (1 cuenta por usuario)
+        $userProvider = self::userWhatsAppProvider($user);
+        if ($userProvider) {
+            return $userProvider;
         }
-        // YCloud tiene prioridad global si está configurado
-        if (config('services.ycloud.api_key') && config('services.ycloud.phone_number_id')) {
+        // Fallbacks globales
+        if (config('services.ycloud.api_key') && (config('services.ycloud.phone_number') || config('services.ycloud.phone_number_id'))) {
             return 'ycloud';
         }
         if (config('services.zavu.api_key')) {
@@ -360,21 +525,15 @@ class WhatsAppService
 
     private function fallbackText(Client $client, Company $company): string
     {
-        $params = $this->buildParams($client, $company);
-        return sprintf(
-            "Estimado(a) cliente: Le informamos que el Departamento de Recuperación de Equipos de %s se comunicara con usted respecto al pedido #%s. Nos puede proporcionar por este medio su ubicación en tiempo actual por WhatsApp para retirar los equipos. Un agente se acercará a la dirección registrada. Por favor manténgase atento/a a su teléfono. Gracias.",
-            $params['empresa'],
-            $params['numero_pedido']
-        );
+        return 'Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.';
     }
 
     private function sendViaZavu(string $to, Client $client, Company $company, ?string $templateName, ?User $user = null): array
     {
-        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.zavu.api_key');
-        $senderId = $user?->phone ?? $user?->settings['whatsapp_sender_id'] ?? config('services.zavu.sender_id');
+        $apiKey = trim((string) ($user?->settings['whatsapp_api_key'] ?? '')) ?: config('services.zavu.api_key');
         $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
         if (!$apiKey) {
-            return $this->result(false, null, 'Zavu no configurado');
+            return $this->result(false, null, self::BULK_NO_SESSION_MESSAGE);
         }
         $text = $this->fallbackText($client, $company);
         $phone = ltrim($to, '+');
@@ -411,8 +570,11 @@ class WhatsAppService
 
     private function sendTextViaZavu(string $to, string $text, ?User $user = null): array
     {
-        $apiKey = $user?->settings['whatsapp_api_key'] ?? config('services.zavu.api_key');
+        $apiKey = trim((string) ($user?->settings['whatsapp_api_key'] ?? '')) ?: config('services.zavu.api_key');
         $baseUrl = config('services.zavu.base_url', 'https://api.zavu.dev');
+        if (!$apiKey) {
+            return $this->result(false, null, self::BULK_NO_SESSION_MESSAGE);
+        }
         $phone = '+'.ltrim($to, '+');
         try {
             $headers = ['Authorization' => 'Bearer '.$apiKey, 'Content-Type' => 'application/json'];
@@ -448,20 +610,37 @@ class WhatsAppService
      */
     public function getUserWhatsAppConfig(?User $user): array
     {
-        if ($user && ($user->settings['whatsapp_api_key'] ?? null)) {
+        $provider = self::userWhatsAppProvider($user);
+        $hasSession = self::userHasBulkSession($user);
+        if ($user && $provider) {
+            $settings = $user->settings ?? [];
+            $missing = [];
+            if (empty($settings['whatsapp_api_key'] ?? null)) {
+                $missing[] = 'whatsapp_api_key';
+            }
+            if ($provider === 'ycloud'
+                && empty($settings['whatsapp_phone_number'] ?? null)
+                && empty($settings['whatsapp_phone_number_id'] ?? null)) {
+                $missing[] = 'whatsapp_phone_number';
+            }
             return [
-                'provider' => 'ycloud',
-                'api_key' => $user->settings['whatsapp_api_key'],
-                'phone_number_id' => $user->settings['whatsapp_phone_number_id'] ?? null,
+                'provider' => $provider,
+                'api_key' => !empty($settings['whatsapp_api_key'] ?? null) ? 'configured' : null,
+                'phone_number' => $settings['whatsapp_phone_number'] ?? null,
+                'phone_number_id' => $settings['whatsapp_phone_number_id'] ?? null,
                 'source' => 'user',
+                'has_session' => $hasSession,
+                'missing' => $missing,
             ];
         }
-        $provider = $this->provider();
+        $provider = $provider ?? $this->provider();
         return [
             'provider' => $provider,
             'api_key' => $provider ? 'configured' : null,
-            'phone_number_id' => null,
+            'phone_number' => config('services.ycloud.phone_number'),
+            'phone_number_id' => config('services.ycloud.phone_number_id'),
             'source' => 'global',
+            'has_session' => $hasSession,
         ];
     }
 }

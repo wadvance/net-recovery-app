@@ -125,6 +125,7 @@ export const excelApi = {
 
 // WhatsApp API
 export const whatsappApi = {
+  status: () => api.get('/whatsapp/status'),
   sendBulk: (data) => api.post('/whatsapp/send-bulk', data),
   sendToClient: (data) => api.post('/whatsapp/send-to-client', data),
   getMessages: (params) => api.get('/whatsapp/messages', { params }),

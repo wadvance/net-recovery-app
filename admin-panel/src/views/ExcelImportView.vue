@@ -59,22 +59,6 @@
           </div>
 
           <div>
-            <label class="label">Empresa</label>
-            <select
-              v-model="selectedCompanyId"
-              class="input"
-            >
-              <option
-                v-for="c in companies"
-                :key="c.id"
-                :value="c.id"
-              >
-                {{ c.name }}
-              </option>
-            </select>
-          </div>
-
-          <div>
             <label class="label">Fecha programada de las tareas</label>
             <input
               v-model="scheduledDate"
@@ -806,9 +790,6 @@ async function fetchCompanies() {
   try {
     const res = await companiesApi.getAll();
     companies.value = res.data.data || res.data;
-    if (!selectedCompanyId.value && companies.value.length) {
-      selectedCompanyId.value = companies.value[0].id;
-    }
   } catch (e) {}
 }
 
@@ -825,10 +806,6 @@ function handleFile(e) {
 
 async function uploadFile() {
   if (!file.value) return;
-  if (!selectedCompanyId.value) {
-    alert("Selecciona una empresa");
-    return;
-  }
   uploading.value = true;
   imported.value = false;
   lastResult.value = {};
@@ -836,7 +813,7 @@ async function uploadFile() {
   try {
     const formData = new FormData();
     formData.append("file", file.value);
-    formData.append("company_id", selectedCompanyId.value);
+    if (selectedCompanyId.value) formData.append("company_id", selectedCompanyId.value);
     formData.append("scheduled_date", scheduledDate.value);
     const res = await excelApi.import(formData);
     importData.value = res.data.import;
@@ -963,14 +940,7 @@ function resetImport() {
 }
 
 async function clearAllData() {
-  const ok = confirm(
-    "¿Eliminar TODOS los clientes, tareas, reportes e historial de importaciones?\n\nEsta acción no se puede deshacer.",
-  );
-  if (!ok) return;
-  const ok2 = confirm(
-    "Confirmación final: se borrará toda la data subida para cargar el Excel nuevo. ¿Continuar?",
-  );
-  if (!ok2) return;
+  if (!confirm("¿Eliminar TODOS los clientes, tareas, reportes e historial?\nEsta acción no se puede deshacer. ¿Continuar?")) return;
   try {
     await excelApi.clearAll();
     importData.value = null;
@@ -978,7 +948,8 @@ async function clearAllData() {
     await fetchImports();
     alert("Base de datos limpiada correctamente");
   } catch (e) {
-    alert("Error al limpiar: " + (e.response?.data?.message || e.message));
+    console.error(e);
+    alert("Error al limpiar: " + (e.response?.data?.message || e.response?.data?.error || e.message));
   }
 }
 

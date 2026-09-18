@@ -35,6 +35,40 @@ class User extends Authenticatable
         return ($id && is_string($id)) ? $id : null;
     }
 
+    /**
+     * ¿El usuario tiene sesión propia de YCloud? (API Key + número remitente o Phone Number ID).
+     * Requerido para que los mensajes masivos salgan desde su número en ycloud.com.
+     */
+    public function hasYCloudSession(): bool
+    {
+        return \App\Services\WhatsAppService::userHasYCloudSession($this);
+    }
+
+    /** Número remitente YCloud del usuario (sesión propia en ycloud.com). */
+    public function ycloudFromNumber(): ?string
+    {
+        $from = trim((string) ($this->settings['whatsapp_phone_number'] ?? ''));
+        return $from !== '' ? $from : null;
+    }
+
+    /** Proveedor WhatsApp efectivo del usuario: 'ycloud', 'zavu' o null. */
+    public function whatsappProvider(): ?string
+    {
+        return \App\Services\WhatsAppService::userWhatsAppProvider($this);
+    }
+
+    /** ¿El usuario tiene sesión propia de Zavu (su cuenta Zavu)? */
+    public function hasZavuSession(): bool
+    {
+        return \App\Services\WhatsAppService::userHasZavuSession($this);
+    }
+
+    /** ¿El usuario puede enviar masivos? (sesión YCloud o Zavu propia). */
+    public function hasBulkSession(): bool
+    {
+        return \App\Services\WhatsAppService::userHasBulkSession($this);
+    }
+
     /** Busca el usuario dueño de una línea WhatsApp (por settings.whatsapp_sender_id). */
     public static function ownerOfSender(?string $senderId): ?self
     {

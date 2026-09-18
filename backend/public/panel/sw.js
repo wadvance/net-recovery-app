@@ -1,4 +1,4 @@
-const CACHE_NAME = 'recovery-admin-v2'
+const CACHE_NAME = 'recovery-admin-v4'
 const PRECACHE_URLS = [
   './',
   './index.html',
@@ -52,6 +52,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return
 
   const url = new URL(request.url)
+  // Ignorar esquemas no-http(s): peticiones de extensiones (chrome-extension://),
+  // data:, blob:, etc. Interceptarlas rompe las extensiones y ensucia la consola.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return
   if (url.pathname.includes('/api/')) return
 
   // Navegaciones (HTML): siempre red para no servir versiones viejas.
@@ -60,9 +63,21 @@ self.addEventListener('fetch', (event) => {
       fetch(request)
         .then((response) => {
           if (response && response.status === 200) {
-            isChallengeHtml(response).then((challenge) => {
-              if (!challenge) cachePut(request, response.clone())
-            })
+            // Clonar de forma SINCRONA antes de entregar la respuesta a la
+            // página: clonarla después (async) falla con "body already used".
+            let toCache = null
+            let toCheck = null
+            try {
+              toCache = response.clone()
+              toCheck = response.clone()
+            } catch (_) {
+              toCache = null
+            }
+            if (toCache && toCheck) {
+              isChallengeHtml(toCheck).then((challenge) => {
+                if (!challenge) cachePut(request, toCache)
+              }).catch(() => {})
+            }
           }
           return response
         })
@@ -79,9 +94,20 @@ self.addEventListener('fetch', (event) => {
       const fetched = fetch(request)
         .then((response) => {
           if (response && response.status === 200 && response.type === 'basic') {
-            isChallengeHtml(response).then((challenge) => {
-              if (!challenge) cachePut(request, response.clone())
-            })
+            // Clonar de forma SINCRONA (ver comentario en navegaciones).
+            let toCache = null
+            let toCheck = null
+            try {
+              toCache = response.clone()
+              toCheck = response.clone()
+            } catch (_) {
+              toCache = null
+            }
+            if (toCache && toCheck) {
+              isChallengeHtml(toCheck).then((challenge) => {
+                if (!challenge) cachePut(request, toCache)
+              }).catch(() => {})
+            }
           }
           return response
         })

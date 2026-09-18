@@ -101,16 +101,23 @@
             </td>
             <td class="py-3">
               <span
-                v-if="user.settings?.whatsapp_api_key"
+                v-if="hasWaSession(user)"
                 class="badge bg-green-100 text-green-700"
-                title="WhatsApp configurado"
+                :title="`Sesión ${waProvider(user) === 'zavu' ? 'Zavu' : 'YCloud'} completa: los masivos salen desde su número`"
               >
-                📱 WA
+                📱 WA {{ waProvider(user) === 'zavu' ? '· Zavu' : '· YCloud' }}
+              </span>
+              <span
+                v-else-if="user.settings?.whatsapp_api_key"
+                class="badge bg-yellow-100 text-yellow-700"
+                title="Sesión incompleta: con YCloud falta el número remitente"
+              >
+                ⚠️ WA incompleto
               </span>
               <span
                 v-else
                 class="badge bg-gray-100 text-gray-500"
-                title="Sin WhatsApp propio"
+                title="Sin sesión WhatsApp: los masivos no llegarán"
               >
                 —
               </span>
@@ -283,24 +290,58 @@
           <!-- WhatsApp Configuration -->
           <div class="border-t border-gray-200 pt-4 mt-4">
             <h4 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <span class="text-green-600">📱</span> Configuración WhatsApp (YCloud)
+              <span class="text-green-600">📱</span> Sesión WhatsApp — 1 cuenta por usuario
             </h4>
+            <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3 text-xs text-blue-800 dark:text-blue-200 leading-relaxed">
+              Para que los mensajes masivos lleguen a los clientes, <strong>cada usuario debe tener su propia cuenta</strong>:
+              con <strong>Zavu</strong> basta crear su cuenta y pegar su <strong>API Key</strong> (el número va ligado a su cuenta Zavu);
+              con <strong>YCloud</strong> (<a href="https://ycloud.com" target="_blank" rel="noopener" class="underline font-semibold">ycloud.com</a>) debe además conectar su número y pegar el <strong>número remitente</strong>.
+            </div>
             <div class="space-y-3">
               <div>
-                <label class="label">API Key de YCloud</label>
+                <label class="label">Proveedor</label>
+                <select
+                  v-model="form.whatsapp_provider"
+                  class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
+                >
+                  <option value="">
+                    Automático (YCloud si hay número, si no Zavu)
+                  </option>
+                  <option value="zavu">
+                    Zavu
+                  </option>
+                  <option value="ycloud">
+                    YCloud
+                  </option>
+                </select>
+              </div>
+              <div>
+                <label class="label">API Key {{ form.whatsapp_provider === 'ycloud' ? 'de YCloud' : form.whatsapp_provider === 'zavu' ? 'de Zavu' : '(Zavu o YCloud)' }}</label>
                 <input
                   v-model="form.whatsapp_api_key"
                   type="password"
                   autocomplete="off"
                   class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
-                  placeholder="ycloud_api_key_..."
+                  placeholder="API key de la cuenta propia del usuario..."
                 >
                 <p class="text-xs text-gray-400 mt-1">
-                  Cada usuario puede tener su propia API key de YCloud
+                  Clave de la cuenta propia del usuario (no compartir entre usuarios)
                 </p>
               </div>
-              <div>
-                <label class="label">Phone Number ID</label>
+              <div v-if="form.whatsapp_provider !== 'zavu'">
+                <label class="label">Número remitente (from) — solo YCloud</label>
+                <input
+                  v-model="form.whatsapp_phone_number"
+                  autocomplete="off"
+                  class="w-full px-4 py-2.5 rounded-lg border border-gray-200 bg-white text-black focus:border-primary-500 focus:ring-2 focus:ring-primary-100 outline-none transition-all text-sm"
+                  placeholder="+50760000000"
+                >
+                <p class="text-xs text-gray-400 mt-1">
+                  El número WhatsApp conectado en su sesión de YCloud. Los masivos salen desde aquí.
+                </p>
+              </div>
+              <div v-if="form.whatsapp_provider !== 'zavu'">
+                <label class="label">Phone Number ID (opcional, solo YCloud)</label>
                 <input
                   v-model="form.whatsapp_phone_number_id"
                   autocomplete="off"
@@ -308,7 +349,7 @@
                   placeholder="123456789012345"
                 >
                 <p class="text-xs text-gray-400 mt-1">
-                  ID del número de teléfono en YCloud/Meta
+                  ID del número en YCloud/Meta. Sirve como respaldo si no usa número remitente.
                 </p>
               </div>
             </div>
@@ -444,7 +485,7 @@ const search = ref('')
 const roleFilter = ref('')
 const showModal = ref(false)
 const editing = ref(null)
-const form = ref({ name: '', email: '', phone: '', role: '', password: '', whatsapp_api_key: '', whatsapp_phone_number_id: '' })
+const form = ref({ name: '', email: '', phone: '', role: '', password: '', whatsapp_provider: '', whatsapp_api_key: '', whatsapp_phone_number: '', whatsapp_phone_number_id: '' })
 const showResetModal = ref(false)
 const resetUser = ref(null)
 const resetPasswordForm = ref('')
@@ -489,10 +530,12 @@ function openModal(user = null) {
         phone: user.phone,
         role: user.role,
         password: '',
+        whatsapp_provider: user.settings?.whatsapp_provider || '',
         whatsapp_api_key: user.settings?.whatsapp_api_key || '',
+        whatsapp_phone_number: user.settings?.whatsapp_phone_number || '',
         whatsapp_phone_number_id: user.settings?.whatsapp_phone_number_id || '',
       }
-    : { name: '', email: '', phone: '', role: '', password: '', whatsapp_api_key: '', whatsapp_phone_number_id: '' }
+    : { name: '', email: '', phone: '', role: '', password: '', whatsapp_provider: '', whatsapp_api_key: '', whatsapp_phone_number: '', whatsapp_phone_number_id: '' }
   showModal.value = true
 }
 
@@ -548,5 +591,19 @@ async function confirmDelete(user) {
 
 function roleClass(role) {
   return { admin: 'bg-red-100 text-red-700', supervisor: 'bg-purple-100 text-purple-700', agent: 'bg-blue-100 text-blue-700' }[role] || 'bg-gray-100'
+}
+
+function hasWaSession(user) {
+  return !!waProvider(user)
+}
+
+function waProvider(user) {
+  const key = (user?.settings?.whatsapp_api_key || '').trim()
+  if (!key) return null
+  const explicit = user?.settings?.whatsapp_provider
+  if (explicit === 'ycloud' || explicit === 'zavu') return explicit
+  const from = (user?.settings?.whatsapp_phone_number || '').trim()
+  const phoneId = (user?.settings?.whatsapp_phone_number_id || '').trim()
+  return (from || phoneId) ? 'ycloud' : 'zavu'
 }
 </script>

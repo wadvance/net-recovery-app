@@ -18,6 +18,23 @@
       </button>
     </div>
 
+    <div
+      v-if="waStatus && !waStatus.has_session"
+      class="mb-6 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl p-4 text-sm text-yellow-800 dark:text-yellow-200 leading-relaxed"
+    >
+      <strong>⚠️ Sin sesión de WhatsApp:</strong> los mensajes masivos no llegarán a los clientes hasta que configures tu sesión.
+      Cada usuario debe registrar su propia API Key en <strong>Usuarios &gt; Editar</strong>: con <strong>Zavu</strong> basta tu API Key de tu cuenta Zavu;
+      con <strong>YCloud</strong> crea tu sesión en <a href="https://ycloud.com" target="_blank" rel="noopener" class="underline font-semibold">ycloud.com</a>
+      y agrega además tu número remitente.
+      <span v-if="waStatus.phone_number">Número detectado: <strong>{{ waStatus.phone_number }}</strong>.</span>
+    </div>
+    <div
+      v-else-if="waStatus && waStatus.has_session"
+      class="mb-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-xl px-4 py-3 text-sm text-green-800 dark:text-green-200"
+    >
+      ✅ Sesión {{ waStatus.provider === 'zavu' ? 'Zavu' : 'YCloud' }} activa<span v-if="waStatus.phone_number"> — los masivos saldrán desde <strong>{{ waStatus.phone_number }}</strong></span><span v-else> — los masivos saldrán desde tu número</span>.
+    </div>
+
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <!-- Send Bulk -->
       <div class="card lg:col-span-2">
@@ -221,7 +238,7 @@
         <div class="bg-green-50 dark:bg-green-900/30 rounded-xl p-4">
           <div class="bg-white dark:bg-gray-700 rounded-lg p-3 shadow-sm max-w-xs">
             <p class="text-sm text-gray-800 dark:text-gray-100 leading-relaxed">
-              Estimado(a) cliente: Le informamos que el Departamento de Recuperación de Equipos de <strong>{{ previewCompany }}</strong> se comunicara con usted respecto al pedido #<strong>{{ previewOrder }}</strong>. Nos puede proporcionar por este medio su ubicación en tiempo actual por WhatsApp para retirar los equipos. Un agente se acercará a la dirección registrada. Por favor manténgase atento/a a su teléfono. Gracias.
+              Estimado(a) cliente: Reciba un cordial saludo de parte de WODEN PANAMA, empresa encargada de la gestion y recuperacion de equipos a nivel nacional para TIGO PANAMA. Nos permitimos contactarle debido a que hemos recibido una orden de recuperacion de equipos. Con el proposito de coordinar la visita y realizar el proceso de manera agil, segura y conveniente para usted, agradecemos su colaboracion proporcionandonos por este medio su ubicacion en tiempo actual mediante WhatsApp. Agradecemos de antemano su atencion y colaboracion. Saludos cordiales, WODEN PANAMA.
             </p>
             <p class="text-xs text-gray-400 text-right mt-2">
               WhatsApp
@@ -336,12 +353,14 @@ const sending = ref(false)
 const selectedByUser = ref({})
 const clientSearch = ref('')
 const phoneSearch = ref('')
+const waStatus = ref(null)
 const form = ref({ company_id: '', template_name: 'equipment_recovery_notification', scheduled_date: '' })
 
 onMounted(async () => {
   await fetchCompanies()
   await fetchTasks()
   await fetchMessages()
+  await fetchWaStatus()
   form.value.scheduled_date = todayDate()
   if (isAgent.value && authStore.user?.company_id) {
     form.value.company_id = authStore.user.company_id
@@ -368,6 +387,15 @@ async function fetchTasks() {
 async function fetchMessages() {
   const res = await whatsappApi.getMessages()
   messages.value = res.data.data || res.data
+}
+
+async function fetchWaStatus() {
+  try {
+    const res = await whatsappApi.status()
+    waStatus.value = res.data
+  } catch {
+    waStatus.value = null
+  }
 }
 
 function normalizeDate(value) {
@@ -435,11 +463,6 @@ const selectedClients = computed(() => {
 
 const selectedClientIds = computed(() => selectedClients.value.map(c => c.id))
 
-const previewGroup = computed(() => dayGroups.value[0] || null)
-const previewClient = computed(() => selectedClients.value[0] || previewGroup.value?.clients[0] || null)
-const previewCompany = computed(() => (previewClient.value ? companyName(previewClient.value) : 'Empresa'))
-const previewOrder = computed(() => previewClient.value?.metadata?.suscriptor || previewClient.value?.order_number || 'Pedido')
-
 const companyIdOf = (c) => c?.company?.id || c?.company_id
 
 function selectAllDay() {
@@ -489,6 +512,10 @@ function companyColor(c) {
 async function sendBulk() {
   const clientIds = selectedClientIds.value
   if (!clientIds.length) return
+  if (waStatus.value && waStatus.value.has_session === false) {
+    alert(waStatus.value.message || 'Configura tu sesión de WhatsApp antes de enviar. Cada usuario necesita su API Key (Zavu o YCloud).')
+    return
+  }
   sending.value = true
   try {
     let groups
@@ -509,17 +536,29 @@ async function sendBulk() {
     }
     if (!confirm(`Enviar mensaje a ${clientIds.length} clientes?`)) return
 
-    let total = 0
+    const companyNameById = (id) => companies.value.find(c => String(c.id) === String(id))?.name || `Empresa ${id}`
+    const lines = []
+    const noCompany = selectedClients.value.filter(c => !companyIdOf(c)).length
+    if (noCompany) lines.push(`⚠️ ${noCompany} cliente(s) sin empresa no se incluyeron`)
     for (const g of groups) {
       if (!g.companyId || !g.ids.length) continue
-      const res = await whatsappApi.sendBulk({
-        company_id: g.companyId,
-        client_ids: g.ids,
-        template_name: form.value.template_name,
-      })
-      total += res.data?.created ?? g.ids.length
+      try {
+        const res = await whatsappApi.sendBulk({
+          company_id: g.companyId,
+          client_ids: g.ids,
+          template_name: form.value.template_name,
+        })
+        const d = res.data || {}
+        let line = `${companyNameById(g.companyId)}: ${d.sent ?? d.created ?? g.ids.length} enviado(s)`
+        if (d.skipped) line += `, ${d.skipped} omitido(s) por ya notificados`
+        if (d.failed) line += `, ${d.failed} fallido(s)`
+        lines.push(line)
+        if (d.errors?.length) lines.push(`   Motivo: ${d.errors[0]}`)
+      } catch (err) {
+        lines.push(`${companyNameById(g.companyId)}: ERROR — ${err.response?.data?.message || err.message}`)
+      }
     }
-    alert(`Mensajes procesados para ${total} clientes`)
+    alert(lines.join('\n') || 'Sin resultados')
     fetchMessages()
   } catch (e) {
     alert('Error: ' + (e.response?.data?.message || e.message))

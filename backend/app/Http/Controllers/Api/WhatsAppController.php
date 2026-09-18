@@ -39,6 +39,16 @@ class WhatsAppController extends Controller
 
         $company = Company::find($request->company_id);
         $authUser = $request->user();
+        // Regla del negocio: el masivo sale desde la sesión propia del usuario
+        // autenticado (Zavu o YCloud). Sin sesión propia los mensajes no llegan.
+        if (!WhatsAppService::userHasBulkSession($authUser)) {
+            return response()->json([
+                'message' => WhatsAppService::BULK_NO_SESSION_MESSAGE,
+                'has_session' => false,
+                'created' => 0,
+                'skipped' => 0,
+            ], 422);
+        }
         $clientsQuery = Client::with('company')->whereIn('id', $request->client_ids);
         if ($authUser->role === 'agent') {
             $clientsQuery->whereHas('tasks', fn ($q) => $q->where('assigned_to', $authUser->id));
@@ -47,6 +57,9 @@ class WhatsAppController extends Controller
 
         $created = 0;
         $skipped = 0;
+        $sent = 0;
+        $failed = 0;
+        $errorSamples = [];
         $seenPhones = [];
         foreach ($clients as $clientRecord) {
             // Solo 1 por cliente/teléfono — dedup en lote y contra BD
@@ -75,17 +88,29 @@ class WhatsAppController extends Controller
 
             $result = (new WhatsAppService())->sendToClient($clientRecord, $clientCompany, $request->template_name, null, $authUser);
             if ($result['ok']) {
+                $sent++;
                 $message->markSent($result['messageId'] ?? '', $result['response'] ?? []);
             } else {
+                $failed++;
                 $message->markFailed($result['error']);
+                $err = (string) ($result['error'] ?? 'error desconocido');
+                if (!in_array($err, $errorSamples) && count($errorSamples) < 3) {
+                    $errorSamples[] = mb_substr($err, 0, 200);
+                }
             }
         }
 
         return response()->json([
-            'message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos por ya notificados - 1 por cliente)" : ""),
+            'message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos por ya notificados - 1 por cliente)" : "") . ($failed ? " ({$failed} fallidos)" : ""),
             'created' => $created,
+            'sent' => $sent,
+            'failed' => $failed,
             'skipped' => $skipped,
-            'configured' => (bool) $authUser->settings['whatsapp_api_key'] ?? ((bool) config('services.whatsapp.token') && (bool) config('services.whatsapp.phone_number_id') || (bool) config('services.twilio.account_sid')),
+            'errors' => $errorSamples,
+            'configured' => true,
+            'has_session' => true,
+            'provider' => WhatsAppService::userWhatsAppProvider($authUser) ?? 'zavu',
+            'source' => 'user',
         ]);
     }
 
@@ -185,6 +210,16 @@ class WhatsAppController extends Controller
         if ($authUser->role === 'agent' && $authUser->id !== $user->id) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
+        // El masivo de un usuario sale desde SU sesión (Zavu o YCloud, su número).
+        // Sin sesión propia los mensajes no llegan a los clientes.
+        if (!WhatsAppService::userHasBulkSession($user)) {
+            return response()->json([
+                'message' => "El usuario \"{$user->name}\" no tiene sesión de WhatsApp configurada. Cada usuario debe registrar su propia API Key (Zavu o YCloud) en Usuarios > Editar.",
+                'has_session' => false,
+                'created' => 0,
+                'skipped' => 0,
+            ], 422);
+        }
         $clientIds = Task::where('assigned_to', $user->id)->with('client')->get()
             ->pluck('client_id')->filter()->unique()->values();
         if ($clientIds->isEmpty()) {
@@ -194,7 +229,7 @@ class WhatsAppController extends Controller
         $company = $firstTask?->company;
         if (!$company) $company = Company::first();
         $clients = Client::with('company')->whereIn('id', $clientIds)->get();
-        $created = 0; $skipped = 0; $seenPhones = [];
+        $created = 0; $skipped = 0; $sent = 0; $failed = 0; $errorSamples = []; $seenPhones = [];
         foreach ($clients as $client) {
             $suffix = substr(preg_replace('/\D/', '', $client->formatted_phone), -8);
             if ($suffix && isset($seenPhones[$suffix])) { $skipped++; continue; }
@@ -205,10 +240,43 @@ class WhatsAppController extends Controller
             $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $templateName, 'template_params' => $params, 'status' => 'pending']);
             $created++;
             $result = (new WhatsAppService())->sendToClient($client, $clientCompany, $templateName, null, $user);
-            if ($result['ok']) $msg->markSent($result['messageId'] ?? '', $result['response'] ?? []);
-            else $msg->markFailed($result['error']);
+            if ($result['ok']) { $sent++; $msg->markSent($result['messageId'] ?? '', $result['response'] ?? []); }
+            else {
+                $failed++;
+                $msg->markFailed($result['error']);
+                $err = (string) ($result['error'] ?? 'error desconocido');
+                if (!in_array($err, $errorSamples) && count($errorSamples) < 3) {
+                    $errorSamples[] = mb_substr($err, 0, 200);
+                }
+            }
         }
-        return response()->json(['message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos)" : ""), 'created' => $created, 'skipped' => $skipped]);
+        return response()->json(['message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos)" : "") . ($failed ? " ({$failed} fallidos)" : ""), 'created' => $created, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'errors' => $errorSamples, 'has_session' => true, 'provider' => WhatsAppService::userWhatsAppProvider($user), 'source' => 'user']);
+    }
+
+    /**
+     * Estado de la sesión WhatsApp del usuario autenticado (Zavu o YCloud).
+     * El panel lo usa para avisar si falta configurar la sesión
+     * antes de intentar un envío masivo.
+     */
+    public function status(Request $request)
+    {
+        $user = $request->user();
+        $config = (new WhatsAppService())->getUserWhatsAppConfig($user);
+        $hasSession = (bool) ($config['has_session'] ?? false);
+        $provider = $config['provider'] ?? null;
+
+        return response()->json([
+            'has_session' => $hasSession,
+            'provider' => $provider,
+            'source' => $config['source'] ?? 'global',
+            'phone_number' => $config['phone_number'] ?? null,
+            'phone_number_id' => $config['phone_number_id'] ?? null,
+            'missing' => $config['missing'] ?? [],
+            'setup_url' => 'https://ycloud.com',
+            'message' => $hasSession
+                ? ('Sesión ' . ($provider === 'zavu' ? 'Zavu' : 'YCloud') . ' configurada. Los mensajes masivos saldrán desde tu número.')
+                : WhatsAppService::BULK_NO_SESSION_MESSAGE,
+        ]);
     }
 
     public function messages(Request $request)

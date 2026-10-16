@@ -45,6 +45,11 @@ return [
     ],
 
     'whatsapp' => [
+        // Forzar proveedor global: 'auto' (por defecto), 'meta', 'ycloud', 'zavu', 'twilio', 'apiswhat', 'evolution'.
+        // Con WHATSAPP_PROVIDER=meta usas Meta Cloud API oficial gratis sin Zavu/YCloud.
+        // Con WHATSAPP_PROVIDER=apiswhat usas tu sesión Baileys/WhatsApp Web (sin Meta).
+        // Con WHATSAPP_PROVIDER=evolution usas tu Evolution API propia (Baileys self-hosted).
+        'provider' => env('WHATSAPP_PROVIDER', 'auto'),
         'token' => env('WHATSAPP_TOKEN', env('YCLOUD_API_KEY')),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID', env('YCLOUD_PHONE_NUMBER_ID', '1324615497397442')),
         'version' => env('WHATSAPP_VERSION', 'v21.0'),
@@ -62,6 +67,23 @@ return [
         'sender_id' => env('ZAVU_SENDER_ID', env('ZAVU_SENDER')),
         'base_url' => env('ZAVU_BASE_URL', 'https://api.zavu.dev'),
         'template_id' => env('ZAVU_TEMPLATE_ID'),
+    ],
+
+    'apiswhat' => [
+        // Gateway Baileys/WhatsApp Web (sin API oficial de Meta).
+        // Instancia vista en tu panel: 1791378174, número +50760827170.
+        'base_url' => env('APISWHAT_BASE_URL', 'https://apiswhat.apps-oficial.com'),
+        'token' => env('APISWHAT_TOKEN'),
+        'instance' => env('APISWHAT_INSTANCE', '1791378174'),
+    ],
+
+    'evolution' => [
+        // Evolution API propia (Baileys self-hosted, código abierto).
+        // Ver recovery-app/deploy/evolution/ para el docker-compose + guía.
+        'base_url' => env('EVOLUTION_BASE_URL'),
+        'api_key' => env('EVOLUTION_API_KEY'),
+        'instance' => env('EVOLUTION_INSTANCE', 'net-recovery'),
+        'webhook_secret' => env('EVOLUTION_WEBHOOK_SECRET', env('META_WEBHOOK_VERIFY_TOKEN', 'netrecovery2026')),
     ],
 
     'twilio' => [

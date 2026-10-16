@@ -10,7 +10,7 @@ class WhatsAppMessage extends Model
 
     protected $table = "whatsapp_messages";
 
-    protected $fillable = ["company_id", "client_id", "task_id", "conversation_id", "to_phone", "from_phone", "template_name", "body", "template_params", "message_id", "status", "direction", "response_data", "error_message", "retries", "sent_at", "delivered_at", "read_at"];
+    protected $fillable = ["company_id", "client_id", "task_id", "conversation_id", "to_phone", "from_phone", "template_name", "body", "template_params", "message_id", "status", "direction", "response_data", "error_message", "retries", "sent_at", "delivered_at", "read_at", "created_by"];
 
     public function client(): BelongsTo
     {
@@ -25,6 +25,12 @@ class WhatsAppMessage extends Model
     public function conversation(): BelongsTo
     {
         return $this->belongsTo(Conversation::class);
+    }
+
+    /** Usuario de la app que originó el envío (null en entrantes/automáticos). */
+    public function sender(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     protected function casts(): array

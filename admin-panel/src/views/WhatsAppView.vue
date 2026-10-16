@@ -302,6 +302,9 @@
                 Template
               </th>
               <th class="pb-3 font-medium">
+                Enviado por
+              </th>
+              <th class="pb-3 font-medium">
                 Estado
               </th>
               <th class="pb-3 font-medium">
@@ -323,6 +326,9 @@
               </td>
               <td class="py-3 text-sm text-gray-600 dark:text-gray-300">
                 {{ msg.template_name }}
+              </td>
+              <td class="py-3 text-sm text-gray-600 dark:text-gray-300">
+                {{ msg.sender?.name || '—' }}
               </td>
               <td class="py-3">
                 <span

@@ -15,6 +15,8 @@ use App\Http\Controllers\Api\PerformanceController;
 use App\Http\Controllers\Api\ConversationController;
 use App\Http\Controllers\Api\EquipmentScanController;
 use App\Http\Controllers\Api\MetaWebhookController;
+use App\Http\Controllers\Api\EvolutionController;
+use App\Http\Controllers\Api\EvolutionWebhookController;
 
 Route::prefix('v1')->group(function () {
     Route::get('/health', function () {
@@ -28,6 +30,9 @@ Route::prefix('v1')->group(function () {
     // Meta Cloud API webhook directo (Opción C): verificación GET + mensajes POST
     Route::get('/whatsapp/meta/webhook', [MetaWebhookController::class, 'verify']);
     Route::post('/whatsapp/meta/webhook', [MetaWebhookController::class, 'receive']);
+
+    // Evolution API propia (Baileys self-hosted): webhook público con ?token=
+    Route::post('/whatsapp/evolution/webhook', [EvolutionWebhookController::class, 'receive']);
 
     Route::middleware('auth:sanctum')->group(function () {
         Route::get('/user', [AuthController::class, 'user']);
@@ -105,6 +110,12 @@ Route::prefix('v1')->group(function () {
         Route::post('/whatsapp/send-bulk', [WhatsAppController::class, 'sendBulk']);
         Route::post('/whatsapp/send-to-client', [WhatsAppController::class, 'sendToClient']);
         Route::get('/whatsapp/messages', [WhatsAppController::class, 'messages']);
+
+        // Evolution propia: pareo QR y estado (requiere login)
+        Route::post('/whatsapp/evolution/connect', [EvolutionController::class, 'connect']);
+        Route::get('/whatsapp/evolution/qr', [EvolutionController::class, 'qr']);
+        Route::get('/whatsapp/evolution/connection', [EvolutionController::class, 'connectionState']);
+        Route::post('/whatsapp/evolution/logout', [EvolutionController::class, 'logout']);
 
         // Conversations (inbox)
         Route::get('/conversations', [ConversationController::class, 'index']);

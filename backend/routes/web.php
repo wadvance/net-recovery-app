@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -47,8 +48,34 @@ Route::get('/panel/{path?}', function ($path = null) {
 })->where('path', '.*');
 
 Route::get('/whatsapp/qr', function () {
-    $agent = request('agent', 'eddie_68681638');
-    return redirect()->away('https://netrecovery.alwaysdata.net/baileys/whatsapp/qr?agent='.$agent);
+    // QR de TU Evolution propia (sin terceros). Requiere EVOLUTION_BASE_URL + EVOLUTION_API_KEY.
+    $instance = request('instance', config('services.evolution.instance', 'net-recovery'));
+    $base = rtrim((string) config('services.evolution.base_url'), '/');
+    $key = (string) config('services.evolution.api_key');
+    if ($base === '' || $key === '') {
+        return response('Evolution no configurada: define EVOLUTION_BASE_URL y EVOLUTION_API_KEY', 503);
+    }
+    try {
+        $http = Http::timeout(25)->withHeaders(['apikey' => $key, 'Content-Type' => 'application/json']);
+        $state = $http->get("{$base}/instance/connectionState/{$instance}")->json();
+        $stateName = strtolower((string) ($state['instance']['state'] ?? $state['state'] ?? ''));
+        if ($stateName === 'open') {
+            return response('<h2 style="font-family:sans-serif">WhatsApp conectado (' . e($instance) . ')</h2>');
+        }
+        $conn = $http->get("{$base}/instance/connect/{$instance}")->json();
+        $qr = $conn['base64'] ?? $conn['qrcode']['base64'] ?? null;
+        if (!$qr) {
+            return response('No se pudo obtener el QR (revisa la instancia en Evolution)', 502);
+        }
+        return response('<html><head><meta http-equiv="refresh" content="45"><title>Vincular WhatsApp</title></head>'
+            . '<body style="font-family:sans-serif;text-align:center">'
+            . '<h2>Escanea con WhatsApp &gt; Dispositivos vinculados</h2>'
+            . '<img src="' . e($qr) . '" style="width:320px;height:320px">'
+            . '<p>Instancia: ' . e($instance) . ' · se actualiza cada 45 s</p>'
+            . '</body></html>');
+    } catch (\Throwable $e) {
+        return response('Error contactando Evolution: ' . $e->getMessage(), 502);
+    }
 });
 
 Route::get('/{path?}', function () {

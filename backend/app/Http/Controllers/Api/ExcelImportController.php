@@ -236,13 +236,25 @@ class ExcelImportController extends Controller
                     $phone2 = $data['telefono_residencia_2'] ?? '';
 
                     $companyId = $import->company_id;
+                    $statedCompany = null;
                     if (!empty($data['empresa'])) {
                         $matchedCompany = $this->findCompanyByName($data['empresa']);
                         if ($matchedCompany) {
                             $companyId = $matchedCompany->id;
+                            $statedCompany = $matchedCompany;
                         } else {
                             $errors[] = "Fila " . ($index + 2) . ": Empresa '{$data['empresa']}' no reconocida (se usa '{$import->company?->name}')";
                         }
+                    }
+                    // Distinción por formato de cuenta:
+                    // MAS MOVIL termina en 0000, TELCA empieza con P-, TIGO el resto.
+                    $accountId = $cuenta !== '' ? $cuenta : $suscriptor;
+                    $detectedCompany = $this->detectCompanyByCuenta($accountId);
+                    if ($detectedCompany && !$statedCompany) {
+                        $companyId = $detectedCompany->id;
+                        $errors[] = "Fila " . ($index + 2) . ": Empresa asignada '{$detectedCompany->name}' por formato de cuenta '{$accountId}'";
+                    } elseif ($detectedCompany && $statedCompany && $statedCompany->id !== $detectedCompany->id) {
+                        $errors[] = "Fila " . ($index + 2) . ": Empresa indica '{$statedCompany->name}' pero la cuenta '{$accountId}' tiene formato de '{$detectedCompany->name}' (se mantiene '{$statedCompany->name}')";
                     }
 
                     if ($fullName === '' || ($cuenta === '' && $suscriptor === '')) {
@@ -389,31 +401,28 @@ class ExcelImportController extends Controller
                         ]);
                     }
 
-                    // Protección anti-repetición: SOLO 1 mensaje por cliente/teléfono.
-                    // - Si el mismo teléfono ya fue notificado alguna vez (BD), no se repite.
-                    // - Si el mismo teléfono ya está en cola en ESTE import, no se duplica.
-                    $phoneSuffix = substr(preg_replace('/\D/', '', $phone), -8);
+                    // Protección anti-repetición: 1 mensaje POR CUENTA (cliente).
+                    // - Si la misma cuenta ya fue notificada (BD), no se repite.
+                    // - Si la misma cuenta ya está en cola en ESTE import, no se duplica.
+                    // Dos cuentas distintas con el mismo teléfono SÍ reciben mensaje cada una.
                     $alreadyQueued = false;
                     foreach ($notifiable as $q) {
-                        if (substr(preg_replace('/\D/', '', $q['client']->phone), -8) === $phoneSuffix) {
+                        if ($q['client']->id === $client->id) {
                             $alreadyQueued = true;
                             break;
                         }
                     }
                     if ($alreadyQueued) {
-                        $errors[] = "Fila " . ($index + 2) . ": {$client->full_name} duplicado en archivo (mismo teléfono ya en cola) - no se repite";
+                        $errors[] = "Fila " . ($index + 2) . ": {$client->full_name} duplicado en archivo (misma cuenta ya en cola) - no se repite";
                         $alreadyNotified++;
                         $successful++;
                         continue;
                     }
                     if (WhatsAppMessage::where('direction', 'outbound')
-                        ->where(function ($q) use ($client, $phoneSuffix) {
-                            $q->where('client_id', $client->id)
-                              ->orWhere('to_phone', 'like', '%' . $phoneSuffix);
-                        })
+                        ->where('client_id', $client->id)
                         ->where('status', '!=', 'failed')
                         ->exists()) {
-                        $errors[] = "Fila " . ($index + 2) . ": {$client->full_name} ya notificado por WhatsApp anteriormente - no se repite (1 por cliente)";
+                        $errors[] = "Fila " . ($index + 2) . ": {$client->full_name} ya notificado por WhatsApp anteriormente - no se repite (1 por cuenta)";
                         $alreadyNotified++;
                         $successful++; // la tarea sí se crea, solo no se re-notifica
                         continue;
@@ -444,11 +453,11 @@ class ExcelImportController extends Controller
         $whatsapp = new WhatsAppService();
         $sentPhones = [];
         foreach ($notifiable as $item) {
-            $suffix = substr(preg_replace('/\D/', '', $item['client']->phone), -8);
-            if (isset($sentPhones[$suffix])) {
+            $clientKey = $item['client']->id; // 1 mensaje por cuenta (aunque compartan teléfono)
+            if (isset($sentPhones[$clientKey])) {
                 continue; // ya enviado en este mismo lote
             }
-            $sentPhones[$suffix] = true;
+            $sentPhones[$clientKey] = true;
             $companyId = $item['companyId'];
             if (!isset($companiesById[$companyId])) {
                 $companiesById[$companyId] = Company::find($companyId);
@@ -669,6 +678,31 @@ class ExcelImportController extends Controller
         return User::where('is_active', true)->get()
             ->first(fn(User $u) => str_contains($this->fold($u->name), $needle)
                 || str_contains($needle, $this->fold($u->name)));
+    }
+
+    /**
+     * Detecta la empresa por el formato del número de cuenta:
+     * - TELCA: empieza con P- (ej. P-12345)
+     * - MAS MOVIL: termina en cuatro ceros (ej. 3525150000)
+     * - TIGO: el resto (sin los cuatro ceros finales)
+     * Devuelve null si la empresa destino no existe/activa.
+     */
+    private function detectCompanyByCuenta(string $cuenta): ?\App\Models\Company
+    {
+        $c = strtoupper(trim($cuenta));
+        if ($c === '') return null;
+        $companies = \App\Models\Company::where('is_active', true)->get();
+        $byCode = fn(string $code) => $companies->first(
+            fn($co) => strtoupper((string) $co->code) === $code
+        );
+        if (str_starts_with($c, 'P-')) {
+            return $byCode('TELCA');
+        }
+        $digits = preg_replace('/\D/', '', $c);
+        if ($digits !== '' && str_ends_with($digits, '0000')) {
+            return $byCode('MAS_MOVIL');
+        }
+        return $byCode('TIGO');
     }
 
     private function findCompanyByName(string $name): ?\App\Models\Company

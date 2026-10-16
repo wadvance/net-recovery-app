@@ -86,6 +86,63 @@ class WhatsAppService
         return self::userHasYCloudSession($user) || self::userHasZavuSession($user);
     }
 
+    /** ¿Meta global configurado? (WHATSAPP_TOKEN + PHONE_NUMBER_ID, gratis sin Zavu). */
+    public static function globalMetaConfigured(): bool
+    {
+        return trim((string) config('services.whatsapp.token')) !== ''
+            && trim((string) config('services.whatsapp.phone_number_id')) !== '';
+    }
+
+    /** ¿Proveedor global forzado por WHATSAPP_PROVIDER? ('meta', 'ycloud', 'zavu', 'twilio', 'apiswhat', 'evolution' o null). */
+    public static function forcedProvider(): ?string
+    {
+        $forced = strtolower(trim((string) config('services.whatsapp.provider', 'auto')));
+        return in_array($forced, ['meta', 'ycloud', 'zavu', 'twilio', 'apiswhat', 'evolution'], true) ? $forced : null;
+    }
+
+    /** ¿Apis What global configurado? (token de Tokens API + instancia, sesión Baileys sin Meta). */
+    public static function globalApisWhatConfigured(): bool
+    {
+        return trim((string) config('services.apiswhat.token')) !== '';
+    }
+
+    /** ¿Evolution propia configurada? (URL + API key global + instancia). */
+    public static function globalEvolutionConfigured(): bool
+    {
+        return trim((string) config('services.evolution.base_url')) !== ''
+            && trim((string) config('services.evolution.api_key')) !== '';
+    }
+
+    /** ¿Se puede enviar masivo? Sesión propia o global forzado (Meta o Apis What, sin sesión por usuario). */
+    public static function canSendBulk(?User $user): bool
+    {
+        if (self::userHasBulkSession($user)) {
+            return true;
+        }
+        // Meta global forzado o Meta global configurado sin YCloud/Zavu compitiendo.
+        if (self::forcedProvider() === 'meta' && self::globalMetaConfigured()) {
+            return true;
+        }
+        // Apis What global (Baileys): basta el token del panel, sale del +50760827170.
+        if (self::forcedProvider() === 'apiswhat' && self::globalApisWhatConfigured()) {
+            return true;
+        }
+        // Evolution propia (Baileys self-hosted): basta URL + API key, sin sesión por usuario.
+        if (self::forcedProvider() === 'evolution' && self::globalEvolutionConfigured()) {
+            return true;
+        }
+        return false;
+    }
+
+    /** Proveedor efectivo para reportar al panel (forzado > sesión usuario > global). */
+    public static function effectiveProvider(?User $user = null): ?string
+    {
+        if (self::forcedProvider()) {
+            return self::forcedProvider();
+        }
+        return self::userWhatsAppProvider($user);
+    }
+
     /**
      * Texto libre de WODEN/TIGO (por defecto). Cada empresa puede tener el
      * suyo en companies.settings['whatsapp_text'] (editable en el panel).
@@ -194,6 +251,14 @@ class WhatsAppService
 
         if ($provider === 'twilio') {
             return $this->sendViaTwilio($to, $client, $company, $templateName);
+        }
+
+        if ($provider === 'apiswhat') {
+            return $this->sendViaApisWhat($to, $client, $company);
+        }
+
+        if ($provider === 'evolution') {
+            return $this->sendViaEvolution($to, $client, $company);
         }
 
         return $this->result(false, null, 'WhatsApp API no configurada');
@@ -417,6 +482,14 @@ class WhatsAppService
             return $this->sendTextViaMeta($to, $text);
         }
 
+        if ($provider === 'apiswhat') {
+            return $this->sendTextViaApisWhat($to, $text);
+        }
+
+        if ($provider === 'evolution') {
+            return $this->sendTextViaEvolution($to, $text);
+        }
+
         return $this->result(false, null, 'WhatsApp API no configurada');
     }
 
@@ -546,6 +619,11 @@ class WhatsAppService
 
     private function provider(?User $user = null): ?string
     {
+        // Proveedor forzado por env WHATSAPP_PROVIDER (ej. 'meta' gratis sin Zavu, 'apiswhat' Baileys, 'evolution' propia).
+        $forced = strtolower(trim((string) config('services.whatsapp.provider', 'auto')));
+        if (in_array($forced, ['meta', 'ycloud', 'zavu', 'twilio', 'apiswhat', 'evolution'], true)) {
+            return $forced;
+        }
         // Sesión propia del usuario primero: YCloud o Zavu (1 cuenta por usuario)
         $userProvider = self::userWhatsAppProvider($user);
         if ($userProvider) {
@@ -675,6 +753,110 @@ class WhatsAppService
         }
     }
 
+    /**
+     * Envío por Apis What (gateway Baileys/WhatsApp Web, sin API oficial de Meta).
+     * Usa el token de "Tokens API" y la instancia del panel (ej. 1791378174).
+     * El endpoint exacto se configura con APISWHAT_SEND_URL (ver Documentación
+     * del panel → botón "Copiar cURL"); el payload se adapta al cURL real.
+     */
+    private function sendViaApisWhat(string $to, Client $client, Company $company): array
+    {
+        return $this->sendTextViaApisWhat($to, $this->fallbackText($client, $company));
+    }
+
+    private function sendTextViaApisWhat(string $to, string $text): array
+    {
+        $token = trim((string) config('services.apiswhat.token'));
+        $instance = trim((string) config('services.apiswhat.instance'));
+        $sendUrl = trim((string) env('APISWHAT_SEND_URL', ''));
+        if (!$token) {
+            return $this->result(false, null, 'Apis What no configurado: define APISWHAT_TOKEN con el token de Tokens API del panel.');
+        }
+        if ($sendUrl === '') {
+            return $this->result(false, null, 'Apis What: falta APISWHAT_SEND_URL. En el panel pulsa "Copiar cURL" o abre "Documentación" y copia la URL de envío para configurarla.');
+        }
+        $phone = ltrim($to, '+');
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['Authorization' => 'Bearer ' . $token, 'Content-Type' => 'application/json'])
+                ->post($sendUrl, [
+                    'instance' => $instance,
+                    'to' => $phone,
+                    'message' => $text,
+                    'text' => $text,
+                ]);
+            $body = $response->json();
+            if ($response->successful() && is_array($body)) {
+                $id = $body['message']['id'] ?? $body['id'] ?? $body['messageId'] ?? null;
+                if ($id || ($body['status'] ?? '') === 'sent' || ($body['success'] ?? false) === true) {
+                    return $this->result(true, is_string($id) ? $id : json_encode($body, JSON_UNESCAPED_UNICODE), null, $body);
+                }
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
+    /**
+     * Envío por Evolution API propia (Baileys self-hosted).
+     * Endpoint: POST {EVOLUTION_BASE_URL}/message/sendText/{instance}
+     * con header `apikey: {EVOLUTION_API_KEY}`.
+     */
+    private function sendViaEvolution(string $to, Client $client, Company $company): array
+    {
+        return $this->sendTextViaEvolution($to, $this->fallbackText($client, $company));
+    }
+
+    private function sendTextViaEvolution(string $to, string $text): array
+    {
+        $baseUrl = rtrim((string) config('services.evolution.base_url'), '/');
+        $apiKey = trim((string) config('services.evolution.api_key'));
+        $instance = trim((string) config('services.evolution.instance', 'net-recovery'));
+        if ($baseUrl === '' || $apiKey === '') {
+            return $this->result(false, null, 'Evolution no configurada: define EVOLUTION_BASE_URL y EVOLUTION_API_KEY (ver deploy/evolution/).');
+        }
+        $number = preg_replace('/\D/', '', $to);
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['apikey' => $apiKey, 'Content-Type' => 'application/json'])
+                ->post("{$baseUrl}/message/sendText/{$instance}", [
+                    'number' => $number,
+                    'text' => $text,
+                ]);
+            $body = $response->json();
+            if ($response->successful() && is_array($body)) {
+                $id = $body['key']['id'] ?? $body['id'] ?? null;
+                if ($id || isset($body['key'])) {
+                    return $this->result(true, is_string($id) ? $id : json_encode($body, JSON_UNESCAPED_UNICODE), null, $body);
+                }
+            }
+            $rawError = is_array($body) ? ($body['message'] ?? $body['error'] ?? json_encode($body)) : $response->body();
+            return $this->result(false, null, is_string($rawError) ? $rawError : json_encode($rawError), is_array($body) ? $body : []);
+        } catch (\Throwable $e) {
+            return $this->result(false, null, $e->getMessage(), []);
+        }
+    }
+
+    /** Llama a Evolution API con la API key global. Útil para QR/estado/instancia. */
+    public static function evolutionRequest(string $method, string $path, array $data = []): array
+    {
+        $baseUrl = rtrim((string) config('services.evolution.base_url'), '/');
+        $apiKey = trim((string) config('services.evolution.api_key'));
+        if ($baseUrl === '' || $apiKey === '') {
+            return ['ok' => false, 'status' => 0, 'body' => ['error' => 'Evolution no configurada']];
+        }
+        try {
+            $response = Http::timeout(30)
+                ->withHeaders(['apikey' => $apiKey, 'Content-Type' => 'application/json'])
+                ->{strtolower($method)}($baseUrl . $path, $data);
+            return ['ok' => $response->successful(), 'status' => $response->status(), 'body' => $response->json() ?? $response->body()];
+        } catch (\Throwable $e) {
+            return ['ok' => false, 'status' => 0, 'body' => ['error' => $e->getMessage()]];
+        }
+    }
+
     private function result(bool $ok, ?string $messageId, ?string $error, array $response = []): array
     {
         return ['ok' => $ok, 'messageId' => $messageId, 'error' => $error, 'response' => $response];
@@ -686,6 +868,25 @@ class WhatsAppService
      */
     public function getUserWhatsAppConfig(?User $user): array
     {
+        // Si hay proveedor forzado (ej. WHATSAPP_PROVIDER=meta), el panel
+        // debe mostrar la sesión global, no pedir API Key por usuario.
+        if (self::forcedProvider()) {
+            $forced = self::forcedProvider();
+            $hasGlobal = $forced === 'meta'
+                ? self::globalMetaConfigured()
+                : ($forced === 'apiswhat'
+                    ? self::globalApisWhatConfigured()
+                    : ($forced === 'evolution' ? self::globalEvolutionConfigured() : (bool) $this->provider()));
+            return [
+                'provider' => $forced,
+                'api_key' => $hasGlobal ? 'configured' : null,
+                'phone_number' => config('services.ycloud.phone_number'),
+                'phone_number_id' => config('services.whatsapp.phone_number_id'),
+                'source' => 'global-' . $forced,
+                'has_session' => $forced === 'meta' ? $hasGlobal : $hasGlobal || self::userHasBulkSession($user),
+                'missing' => $hasGlobal ? [] : ['whatsapp_api_key'],
+            ];
+        }
         $provider = self::userWhatsAppProvider($user);
         $hasSession = self::userHasBulkSession($user);
         if ($user && $provider) {

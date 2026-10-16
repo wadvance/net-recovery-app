@@ -40,8 +40,9 @@ class WhatsAppController extends Controller
         $company = Company::find($request->company_id);
         $authUser = $request->user();
         // Regla del negocio: el masivo sale desde la sesión propia del usuario
-        // autenticado (Zavu o YCloud). Sin sesión propia los mensajes no llegan.
-        if (!WhatsAppService::userHasBulkSession($authUser)) {
+        // (Zavu o YCloud)... o desde el proveedor global si WHATSAPP_PROVIDER=meta
+        // o apiswhat (sin sesión por usuario). Sin ninguna vía, se rechaza.
+        if (!WhatsAppService::canSendBulk($authUser)) {
             return response()->json([
                 'message' => WhatsAppService::BULK_NO_SESSION_MESSAGE,
                 'has_session' => false,
@@ -62,13 +63,12 @@ class WhatsAppController extends Controller
         $errorSamples = [];
         $seenPhones = [];
         foreach ($clients as $clientRecord) {
-            // Solo 1 por cliente/teléfono — dedup en lote y contra BD
-            $suffix = substr(preg_replace('/\D/', '', $clientRecord->formatted_phone), -8);
-            if (isset($seenPhones[$suffix])) {
+            // 1 mensaje por cuenta — dedup en lote y contra BD (por client_id)
+            if (isset($seenPhones[$clientRecord->id])) {
                 $skipped++;
                 continue;
             }
-            $seenPhones[$suffix] = true;
+            $seenPhones[$clientRecord->id] = true;
             if ($this->alreadyNotified($clientRecord)) {
                 $skipped++;
                 continue;
@@ -85,6 +85,7 @@ class WhatsAppController extends Controller
                 'template_name' => $effectiveTemplate,
                 'template_params' => $params,
                 'status' => 'pending',
+                'created_by' => $authUser->id,
             ]);
 
             $created++;
@@ -112,8 +113,8 @@ class WhatsAppController extends Controller
             'errors' => $errorSamples,
             'configured' => true,
             'has_session' => true,
-            'provider' => WhatsAppService::userWhatsAppProvider($authUser) ?? 'zavu',
-            'source' => 'user',
+            'provider' => WhatsAppService::effectiveProvider($authUser) ?? WhatsAppService::userWhatsAppProvider($authUser) ?? 'meta',
+            'source' => WhatsAppService::forcedProvider() ? 'global-meta' : 'user',
         ]);
     }
 
@@ -143,6 +144,7 @@ class WhatsAppController extends Controller
             'template_name' => $effectiveTemplate,
             'template_params' => $params,
             'status' => 'pending',
+            'created_by' => $request->user()->id,
         ]);
 
         $message = $this->dispatchMessage($message, $client, $company, $effectiveTemplate, $request->user());
@@ -194,6 +196,7 @@ class WhatsAppController extends Controller
             'template_name' => $templateName,
             'template_params' => $params,
             'status' => 'pending',
+            'created_by' => $user->id,
         ]);
 
         $message = $this->dispatchMessage($message, $client, $company, $templateName, $user);
@@ -215,11 +218,11 @@ class WhatsAppController extends Controller
         if ($authUser->role === 'agent' && $authUser->id !== $user->id) {
             return response()->json(['message' => 'No autorizado'], 403);
         }
-        // El masivo de un usuario sale desde SU sesión (Zavu o YCloud, su número).
-        // Sin sesión propia los mensajes no llegan a los clientes.
-        if (!WhatsAppService::userHasBulkSession($user)) {
+        // El masivo de un usuario sale desde SU sesión (Zavu o YCloud, su número)
+        // o desde Meta global si WHATSAPP_PROVIDER=meta (gratis, sin Zavu).
+        if (!WhatsAppService::canSendBulk($user) && !WhatsAppService::canSendBulk($authUser)) {
             return response()->json([
-                'message' => "El usuario \"{$user->name}\" no tiene sesión de WhatsApp configurada. Cada usuario debe registrar su propia API Key (Zavu o YCloud) en Usuarios > Editar.",
+                'message' => "El usuario \"{$user->name}\" no tiene sesión de WhatsApp configurada. Configura WHATSAPP_PROVIDER=meta con tu token Meta gratis, o registra su API Key (Zavu o YCloud) en Usuarios > Editar.",
                 'has_session' => false,
                 'created' => 0,
                 'skipped' => 0,
@@ -236,14 +239,14 @@ class WhatsAppController extends Controller
         $clients = Client::with('company')->whereIn('id', $clientIds)->get();
         $created = 0; $skipped = 0; $sent = 0; $failed = 0; $errorSamples = []; $seenPhones = [];
         foreach ($clients as $client) {
-            $suffix = substr(preg_replace('/\D/', '', $client->formatted_phone), -8);
-            if ($suffix && isset($seenPhones[$suffix])) { $skipped++; continue; }
-            if ($suffix) $seenPhones[$suffix] = true;
+            // 1 mensaje por cuenta (por client_id, aunque compartan teléfono)
+            if (isset($seenPhones[$client->id])) { $skipped++; continue; }
+            $seenPhones[$client->id] = true;
             if ($this->alreadyNotified($client)) { $skipped++; continue; }
             $clientCompany = $client->company ?: $company;
             $params = $this->buildTemplateParams($clientCompany, $client);
             $effectiveTemplate = WhatsAppService::resolveTemplate($clientCompany, $templateName);
-            $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $effectiveTemplate, 'template_params' => $params, 'status' => 'pending']);
+            $msg = WhatsAppMessage::create(['company_id' => $clientCompany?->id ?? $company?->id, 'client_id' => $client->id, 'to_phone' => $client->formatted_phone, 'template_name' => $effectiveTemplate, 'template_params' => $params, 'status' => 'pending', 'created_by' => $authUser->id]);
             $created++;
             $result = (new WhatsAppService())->sendToClient($client, $clientCompany, $effectiveTemplate, null, $user);
             if ($result['ok']) { $sent++; $msg->markSent($result['messageId'] ?? '', $result['response'] ?? []); }
@@ -256,7 +259,7 @@ class WhatsAppController extends Controller
                 }
             }
         }
-        return response()->json(['message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos)" : "") . ($failed ? " ({$failed} fallidos)" : ""), 'created' => $created, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'errors' => $errorSamples, 'has_session' => true, 'provider' => WhatsAppService::userWhatsAppProvider($user), 'source' => 'user']);
+        return response()->json(['message' => "Se procesaron {$created} mensajes" . ($skipped ? " ({$skipped} omitidos)" : "") . ($failed ? " ({$failed} fallidos)" : ""), 'created' => $created, 'sent' => $sent, 'failed' => $failed, 'skipped' => $skipped, 'errors' => $errorSamples, 'has_session' => true, 'provider' => WhatsAppService::effectiveProvider($user) ?? WhatsAppService::userWhatsAppProvider($user) ?? 'meta', 'source' => WhatsAppService::forcedProvider() ? 'global-meta' : 'user']);
     }
 
     /**
@@ -268,6 +271,45 @@ class WhatsAppController extends Controller
     {
         $user = $request->user();
         $config = (new WhatsAppService())->getUserWhatsAppConfig($user);
+        // Con Meta global forzado no se exige sesión por usuario.
+        if (WhatsAppService::forcedProvider() === 'meta' && WhatsAppService::globalMetaConfigured()) {
+            return response()->json([
+                'has_session' => true,
+                'provider' => 'meta',
+                'source' => 'global-meta',
+                'phone_number' => config('services.whatsapp.phone_number_id'),
+                'phone_number_id' => config('services.whatsapp.phone_number_id'),
+                'missing' => [],
+                'setup_url' => 'https://developers.facebook.com/docs/whatsapp/cloud-api/get-started',
+                'message' => 'Sesión Meta Cloud API configurada (gratis, sin Zavu). Los masivos salen desde el número global.',
+            ]);
+        }
+        // Con Evolution propia (Baileys self-hosted) no se exige sesión por usuario.
+        if (WhatsAppService::forcedProvider() === 'evolution' && WhatsAppService::globalEvolutionConfigured()) {
+            return response()->json([
+                'has_session' => true,
+                'provider' => 'evolution',
+                'source' => 'global-evolution',
+                'phone_number' => null,
+                'phone_number_id' => null,
+                'missing' => [],
+                'setup_url' => '/api/v1/whatsapp/evolution/qr',
+                'message' => 'Sesión Evolution propia configurada (Baileys self-hosted). Escanea el QR si aún no está conectada.',
+            ]);
+        }
+        // Con Apis What global (Baileys) no se exige sesión por usuario.
+        if (WhatsAppService::forcedProvider() === 'apiswhat' && WhatsAppService::globalApisWhatConfigured()) {
+            return response()->json([
+                'has_session' => true,
+                'provider' => 'apiswhat',
+                'source' => 'global-apiswhat',
+                'phone_number' => '+50760827170',
+                'phone_number_id' => null,
+                'missing' => [],
+                'setup_url' => 'https://apiswhat.apps-oficial.com/main/v1/api_whatsapp',
+                'message' => 'Sesión Apis What configurada (Baileys, sin Meta). Los masivos salen desde el +50760827170.',
+            ]);
+        }
         $hasSession = (bool) ($config['has_session'] ?? false);
         $provider = $config['provider'] ?? null;
 
@@ -288,7 +330,7 @@ class WhatsAppController extends Controller
     public function messages(Request $request)
     {
         $user = $request->user();
-        $query = WhatsAppMessage::query()->with(['client', 'task'])->latest();
+        $query = WhatsAppMessage::query()->with(['client', 'task', 'sender'])->latest();
 
         if ($user->role === 'agent') {
             $query->where(function ($q) use ($user) {
@@ -304,15 +346,14 @@ class WhatsAppController extends Controller
         return response()->json($query->paginate($request->get('per_page', 15)));
     }
 
+    /**
+     * ¿Esta cuenta ya fue notificada? Regla: 1 mensaje POR CUENTA (client_id).
+     * Dos cuentas con el mismo teléfono reciben mensaje cada una.
+     */
     private function alreadyNotified(Client $client): bool
     {
-        $suffix = substr(preg_replace('/\D/', '', $client->formatted_phone), -8);
-        if (!$suffix) return false;
         return WhatsAppMessage::where('direction', 'outbound')
-            ->where(function ($q) use ($client, $suffix) {
-                $q->where('client_id', $client->id)
-                  ->orWhere('to_phone', 'like', '%' . $suffix);
-            })
+            ->where('client_id', $client->id)
             ->where('status', '!=', 'failed')
             ->exists();
     }

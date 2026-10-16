@@ -452,6 +452,8 @@ class ExcelImportController extends Controller
         // del agente asignado (webhook).
         $notified = 0;
         $notifyFailed = 0;
+        $notifiedByCompany = [];
+        $failedByCompany = [];
         $companiesById = [];
         $whatsapp = new WhatsAppService();
         $sentPhones = [];
@@ -484,8 +486,12 @@ class ExcelImportController extends Controller
             );
             if ($result['ok']) {
                 $notified++;
+                $companyLabel = $companiesById[$companyId]?->name ?? "Empresa #{$companyId}";
+                $notifiedByCompany[$companyLabel] = ($notifiedByCompany[$companyLabel] ?? 0) + 1;
             } else {
                 $notifyFailed++;
+                $companyLabel = $companiesById[$companyId]?->name ?? "Empresa #{$companyId}";
+                $failedByCompany[$companyLabel] = ($failedByCompany[$companyLabel] ?? 0) + 1;
                 $errors[] = "Aviso no enviado a {$item['client']->full_name}: {$result['error']}";
             }
         }
@@ -533,6 +539,8 @@ class ExcelImportController extends Controller
             'failed' => $failed,
             'notified' => $notified,
             'notify_failed' => $notifyFailed,
+            'notified_by_company' => $notifiedByCompany,
+            'failed_by_company' => $failedByCompany,
             'already_notified' => $alreadyNotified,
             'agent_notified' => $agentNotified,
             'errors' => $errors,

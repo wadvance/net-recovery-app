@@ -155,6 +155,43 @@
                 Avisos fallidos
               </p>
             </div>
+            <div class="rounded-xl bg-purple-50 dark:bg-purple-900/20 p-4 text-center">
+              <p class="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                {{ lastResult.already_notified || 0 }}
+              </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Ya notificados antes
+              </p>
+            </div>
+            <div
+              v-if="lastResult.notified_by_company && Object.keys(lastResult.notified_by_company).length"
+              class="col-span-2 sm:col-span-3 rounded-xl bg-gray-50 dark:bg-gray-800 p-4"
+            >
+              <p class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                Enviados por empresa
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <span
+                  v-for="(n, emp) in lastResult.notified_by_company"
+                  :key="emp"
+                  class="text-xs font-mono bg-white dark:bg-gray-700 rounded-full px-3 py-1 text-gray-700 dark:text-gray-200"
+                >
+                  {{ emp }}: {{ n }}
+                </span>
+              </div>
+              <div
+                v-if="lastResult.failed_by_company && Object.keys(lastResult.failed_by_company).length"
+                class="flex flex-wrap gap-2 mt-2"
+              >
+                <span
+                  v-for="(n, emp) in lastResult.failed_by_company"
+                  :key="'f-'+emp"
+                  class="text-xs font-mono bg-red-100 dark:bg-red-900/40 rounded-full px-3 py-1 text-red-700 dark:text-red-300"
+                >
+                  {{ emp }} fallidos: {{ n }}
+                </span>
+              </div>
+            </div>
             <div class="rounded-xl bg-gray-50 dark:bg-gray-800 p-4 text-center">
               <p class="text-2xl font-bold text-gray-600 dark:text-gray-400">
                 {{ importData.total_rows }}

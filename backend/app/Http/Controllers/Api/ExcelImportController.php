@@ -250,6 +250,9 @@ class ExcelImportController extends Controller
                     // MAS MOVIL termina en 0000, TELCA empieza con P-, TIGO el resto.
                     $accountId = $cuenta !== '' ? $cuenta : $suscriptor;
                     $detectedCompany = $this->detectCompanyByCuenta($accountId);
+                    if (!$detectedCompany && trim((string) $accountId) !== '') {
+                        $errors[] = "Fila " . ($index + 2) . ": no se pudo distinguir la empresa por la cuenta '{$accountId}' (revisa que existan TIGO / MAS MOVIL / TELCA activas)";
+                    }
                     if ($detectedCompany && !$statedCompany) {
                         $companyId = $detectedCompany->id;
                         $errors[] = "Fila " . ($index + 2) . ": Empresa asignada '{$detectedCompany->name}' por formato de cuenta '{$accountId}'";
@@ -691,9 +694,17 @@ class ExcelImportController extends Controller
     {
         $c = strtoupper(trim($cuenta));
         if ($c === '') return null;
+        // Excel a veces trae la cuenta como número (3525150000.0): normalizar sin decimales.
+        if (is_numeric($c)) {
+            $c = sprintf('%.0f', (float) $c);
+        }
         $companies = \App\Models\Company::where('is_active', true)->get();
+        // Comparación tolerante: ignora espacios, guiones y guiones bajos
+        // ('MAS_MOVIL', 'MAS MOVIL', 'MASMOVIL' valen igual), por código o nombre.
+        $norm = fn($s) => strtoupper((string) preg_replace('/[^A-Z0-9]/', '', $s));
         $byCode = fn(string $code) => $companies->first(
-            fn($co) => strtoupper((string) $co->code) === $code
+            fn($co) => $norm((string) $co->code) === $norm($code)
+                || $norm((string) $co->name) === $norm($code)
         );
         if (str_starts_with($c, 'P-')) {
             return $byCode('TELCA');
